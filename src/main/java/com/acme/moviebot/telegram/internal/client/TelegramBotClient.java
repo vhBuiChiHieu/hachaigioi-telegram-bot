@@ -15,4 +15,6 @@ public interface TelegramBotClient {
     void editMessageText(long chatId, long messageId, String text, List<List<Map<String, String>>> keyboard);
 
     void answerCallbackQuery(String callbackQueryId, String text, boolean showAlert);
+
+    void setMyCommands(List<TelegramBotCommand> commands, Map<String, Object> scope);
 }

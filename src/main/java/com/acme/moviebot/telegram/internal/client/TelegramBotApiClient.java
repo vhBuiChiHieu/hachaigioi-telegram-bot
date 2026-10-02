@@ -84,6 +84,14 @@ public class TelegramBotApiClient implements TelegramBotClient {
         call("answerCallbackQuery", request);
     }
 
+    @Override
+    public void setMyCommands(List<TelegramBotCommand> commands, Map<String, Object> scope) {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("commands", commands);
+        request.put("scope", scope);
+        call("setMyCommands", request);
+    }
+
     private JsonNode call(String method, Map<String, Object> request) {
         String token = properties.botToken();
         if (token.isBlank()) throw new TelegramApiException("Telegram bot token is not configured.");

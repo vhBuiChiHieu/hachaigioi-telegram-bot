@@ -23,13 +23,16 @@ src/main/java/com/acme/moviebot/
 │       ├── domain/               # Movie, Season, Episode, media entities and rules
 │       └── persistence/          # Catalog-owned Spring Data repositories
 ├── bot/
+│   ├── BotCommandMenus.java      # User/admin slash-command menus
 │   ├── model/                    # Transport-neutral updates and bot actions
 │   └── internal/
+│       ├── commands/             # Role-specific command menu definitions
 │       ├── admin/                # Authorization, persisted admin sessions and flows
 │       ├── user/                 # Search and selection flows
 │       └── ...                   # Routing, callback codec and update idempotency
 └── telegram/
     └── internal/
+        ├── commands/             # Telegram command menu registration
         ├── client/               # Telegram Bot API HTTP client and DTOs
         ├── config/               # Telegram properties and HTTP client setup
         ├── executor/             # BotAction to Telegram API adapter
@@ -43,10 +46,10 @@ src/main/resources/
 
 ## Package responsibilities
 
-- `access` decides whether a Telegram numeric user ID is an admin. Do not use usernames for authorization.
+- `access` decides whether a Telegram numeric user ID is an admin and exposes configured admin IDs through its public API. Do not use usernames for authorization.
 - `catalog` owns movie, season, episode, media, search, and publish rules. Keep its entities and repositories internal.
-- `bot` owns transport-neutral command routing, user/admin conversations, persistent admin sessions, update idempotency, and `BotAction` creation.
-- `telegram` owns Telegram HTTP calls, polling, mapping, retries, and action execution. Keep catalog and authorization policy out of this module.
+- `bot` owns transport-neutral command routing, user/admin conversations, persistent admin sessions, update idempotency, `BotAction` creation, and user/admin command menu definitions.
+- `telegram` owns Telegram HTTP calls, polling, mapping, retries, command menu registration, and action execution. Keep catalog and authorization policy out of this module.
 
 ## Build and run
 
