@@ -1,0 +1,23 @@
+CREATE TABLE media_asset (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    episode_id BIGINT NOT NULL,
+    provider VARCHAR(32) NOT NULL,
+    media_type VARCHAR(32) NOT NULL,
+    provider_file_id VARCHAR(1024) NOT NULL,
+    provider_unique_file_id VARCHAR(512) NULL,
+    source_chat_id BIGINT NULL,
+    source_message_id BIGINT NULL,
+    file_name VARCHAR(512) NULL,
+    mime_type VARCHAR(128) NULL,
+    file_size BIGINT NULL,
+    duration_seconds INT NULL,
+    width INT NULL,
+    height INT NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_media_asset_episode_id (episode_id),
+    KEY idx_media_asset_unique_file_id (provider_unique_file_id),
+    CONSTRAINT fk_media_asset_episode FOREIGN KEY (episode_id) REFERENCES episode(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

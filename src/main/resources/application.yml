@@ -1,0 +1,36 @@
+spring:
+  config:
+    import: "optional:file:./.env[.properties]"
+  application:
+    name: telegram-movie-bot
+  profiles:
+    default: local
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+
+app:
+  access:
+    admin-ids: ${TELEGRAM_ADMIN_IDS:}
+  telegram:
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    api-base-url: ${TELEGRAM_API_BASE_URL:https://api.telegram.org}
+    polling:
+      enabled: ${TELEGRAM_POLLING_ENABLED:true}
+      timeout-seconds: ${TELEGRAM_POLLING_TIMEOUT_SECONDS:30}
+      retry-max-seconds: ${TELEGRAM_POLLING_RETRY_MAX_SECONDS:30}
