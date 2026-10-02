@@ -2,7 +2,7 @@ CREATE TABLE season (
     id BIGINT NOT NULL AUTO_INCREMENT,
     movie_id BIGINT NOT NULL,
     season_number INT NOT NULL,
-    name VARCHAR(255) NULL,
+    original_episode_count INT NOT NULL,
     status VARCHAR(32) NOT NULL,
     version BIGINT NOT NULL DEFAULT 0,
     created_at DATETIME(6) NOT NULL,

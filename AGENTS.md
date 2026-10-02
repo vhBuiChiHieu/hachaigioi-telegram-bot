@@ -48,6 +48,8 @@ src/main/resources/
 
 - `access` decides whether a Telegram numeric user ID is an admin and exposes configured admin IDs through its public API. Do not use usernames for authorization.
 - `catalog` owns movie, season, episode, media, search, and publish rules. Keep its entities and repositories internal.
+- A movie stores Vietnamese and Chinese names, a Telegram thumbnail file ID, description, and full flag. A season stores the original Chinese episode count; each episode row is an ordered posted part, with order derived from its ID.
+- Movie search ignores case, diacritics, and punctuation, then ranks token matches by Levenshtein similarity. Public `/find` results include published movies; admin search excludes archived movies.
 - `bot` owns transport-neutral command routing, user/admin conversations, persistent admin sessions, update idempotency, `BotAction` creation, and user/admin command menu definitions.
 - `telegram` owns Telegram HTTP calls, polling, mapping, retries, command menu registration, and action execution. Keep catalog and authorization policy out of this module.
 
@@ -65,6 +67,7 @@ src/main/resources/
 - `access` and `catalog` must not depend on `bot` or `telegram`.
 - Keep Telegram API DTOs and HTTP calls in `telegram`. Bot handlers use the transport-neutral models in `bot` and return `BotAction` values.
 - Keep JPA entities and repositories inside the module that owns them. Other modules use public facades and DTOs, not persistence internals.
+- Catalog entities inherit shared DRAFT/PUBLISHED/ARCHIVED status, optimistic version, and created/updated timestamps from `CatalogEntity`.
 - Preserve Spring Modulith boundaries and avoid circular module dependencies.
 
 ## Persistence and configuration

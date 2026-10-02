@@ -10,16 +10,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "media_asset")
-public class MediaAsset {
+public class MediaAsset extends CatalogEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -64,16 +59,6 @@ public class MediaAsset {
     private Integer width;
     private Integer height;
 
-    @Version
-    @Column(nullable = false)
-    private long version;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
-
     protected MediaAsset() {
     }
 
@@ -93,16 +78,6 @@ public class MediaAsset {
         this.width = width;
         this.height = height;
     }
-
-    @PrePersist
-    protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        createdAt = now;
-        updatedAt = now;
-    }
-
-    @PreUpdate
-    protected void onUpdate() { updatedAt = LocalDateTime.now(ZoneOffset.UTC); }
 
     public Long getId() { return id; }
     public Episode getEpisode() { return episode; }

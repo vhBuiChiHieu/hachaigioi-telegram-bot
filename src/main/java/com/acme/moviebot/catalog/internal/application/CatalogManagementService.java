@@ -8,6 +8,7 @@ import com.acme.moviebot.catalog.CatalogManagement;
 import com.acme.moviebot.catalog.CatalogConflictException;
 import com.acme.moviebot.catalog.CatalogNotFoundException;
 import com.acme.moviebot.catalog.internal.domain.Episode;
+import com.acme.moviebot.catalog.internal.domain.CatalogStatus;
 import com.acme.moviebot.catalog.internal.domain.MediaAsset;
 import com.acme.moviebot.catalog.internal.domain.Movie;
 import com.acme.moviebot.catalog.internal.domain.Season;
@@ -39,47 +40,41 @@ public class CatalogManagementService implements CatalogManagement {
 
     @Override
     public long createMovie(CreateMovieCommand command) {
-        if (command == null || !StringUtils.hasText(command.name())) {
+        if (command == null || !StringUtils.hasText(command.vietnameseName())) {
             throw new IllegalArgumentException("Tên phim không được để trống.");
         }
-        String name = command.name().trim();
-        String baseSlug = SearchNormalizer.slug(name);
-        if (baseSlug.isEmpty()) {
-            throw new IllegalArgumentException("Tên phim không hợp lệ.");
-        }
-        String slug = baseSlug;
-        int suffix = 2;
-        while (movies.existsBySlug(slug)) {
-            slug = baseSlug + "-" + suffix++;
-        }
-        Movie movie = new Movie(slug, name, clean(command.originalName()), SearchNormalizer.normalize(name), clean(command.description()));
+        String vietnameseName = command.vietnameseName().trim();
+        String chineseName = clean(command.chineseName());
+        String searchName = SearchNormalizer.normalize(vietnameseName + " " + (chineseName == null ? "" : chineseName));
+        Movie movie = new Movie(vietnameseName, chineseName, searchName, clean(command.thumbnailFileId()),
+                clean(command.description()), command.full());
         return movies.save(movie).getId();
     }
 
     @Override
     public long createSeason(CreateSeasonCommand command) {
-        if (command.seasonNumber() < 0) {
-            throw new IllegalArgumentException("Số season phải lớn hơn hoặc bằng 0.");
+        if (command == null || command.seasonNumber() < 1) {
+            throw new IllegalArgumentException("Số season phải lớn hơn hoặc bằng 1.");
+        }
+        if (command.originalEpisodeCount() < 0) {
+            throw new IllegalArgumentException("Tổng số tập gốc phải lớn hơn hoặc bằng 0.");
         }
         Movie movie = movies.findById(command.movieId())
                 .orElseThrow(() -> new CatalogNotFoundException("Không tìm thấy phim."));
         if (seasons.existsByMovie_IdAndSeasonNumber(command.movieId(), command.seasonNumber())) {
             throw new CatalogConflictException("Season " + command.seasonNumber() + " đã tồn tại.");
         }
-        return seasons.save(new Season(movie, command.seasonNumber(), clean(command.name()))).getId();
+        return seasons.save(new Season(movie, command.seasonNumber(), command.originalEpisodeCount())).getId();
     }
 
     @Override
     public long createEpisode(CreateEpisodeCommand command) {
-        if (command.episodeNumber() < 0) {
-            throw new IllegalArgumentException("Số tập phải lớn hơn hoặc bằng 0.");
+        if (command == null) {
+            throw new IllegalArgumentException("Thiếu thông tin season.");
         }
         Season season = seasons.findById(command.seasonId())
                 .orElseThrow(() -> new CatalogNotFoundException("Không tìm thấy season."));
-        if (episodes.existsBySeason_IdAndEpisodeNumber(command.seasonId(), command.episodeNumber())) {
-            throw new CatalogConflictException("Tập " + command.episodeNumber() + " đã tồn tại.");
-        }
-        return episodes.save(new Episode(season, command.episodeNumber(), clean(command.name()), clean(command.description()))).getId();
+        return episodes.save(new Episode(season)).getId();
     }
 
     @Override
@@ -108,9 +103,12 @@ public class CatalogManagementService implements CatalogManagement {
     @Override
     public void publishEpisode(long episodeId) {
         Episode episode = episode(episodeId);
-        if (mediaAssets.findFirstByEpisode_IdOrderByIdAsc(episodeId).isEmpty()) {
-            throw new CatalogConflictException("Hãy gửi video trước khi publish tập này.");
+        MediaAsset asset = mediaAssets.findFirstByEpisode_IdOrderByIdAsc(episodeId)
+                .orElseThrow(() -> new CatalogConflictException("Hãy gửi video trước khi publish tập này."));
+        if (episode.getStatus() == CatalogStatus.ARCHIVED) {
+            throw new CatalogConflictException("Không thể publish một phần phim đã lưu trữ.");
         }
+        asset.publish();
         episode.publish();
     }
 

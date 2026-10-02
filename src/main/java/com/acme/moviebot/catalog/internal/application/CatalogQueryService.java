@@ -7,20 +7,18 @@ import com.acme.moviebot.catalog.CatalogViews.MovieDetails;
 import com.acme.moviebot.catalog.CatalogViews.MovieSummary;
 import com.acme.moviebot.catalog.CatalogViews.SeasonSummary;
 import com.acme.moviebot.catalog.internal.domain.Episode;
-import com.acme.moviebot.catalog.internal.domain.EpisodeStatus;
+import com.acme.moviebot.catalog.internal.domain.CatalogStatus;
 import com.acme.moviebot.catalog.internal.domain.MediaAsset;
 import com.acme.moviebot.catalog.internal.domain.Movie;
-import com.acme.moviebot.catalog.internal.domain.MovieStatus;
 import com.acme.moviebot.catalog.internal.domain.Season;
-import com.acme.moviebot.catalog.internal.domain.SeasonStatus;
-import com.acme.moviebot.catalog.internal.domain.SearchNormalizer;
+import com.acme.moviebot.catalog.internal.domain.FuzzySearchMatcher;
 import com.acme.moviebot.catalog.internal.persistence.EpisodeRepository;
 import com.acme.moviebot.catalog.internal.persistence.MediaAssetRepository;
 import com.acme.moviebot.catalog.internal.persistence.MovieRepository;
 import com.acme.moviebot.catalog.internal.persistence.SeasonRepository;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,22 +41,37 @@ public class CatalogQueryService implements CatalogQuery {
 
     @Override
     public List<MovieSummary> searchMovies(String keyword, int limit) {
-        String normalized = SearchNormalizer.normalize(keyword);
-        if (normalized.isBlank() || limit < 1) {
-            return List.of();
-        }
-        int boundedLimit = Math.min(limit, 50);
-        return movies.searchPublished(MovieStatus.PUBLISHED, normalized, PageRequest.of(0, boundedLimit))
-                .stream().map(movie -> new MovieSummary(movie.getId(), movie.getSlug(), movie.getName())).toList();
+        return fuzzyMatches(movies.findByStatusOrderByVietnameseNameAsc(CatalogStatus.PUBLISHED), keyword, limit)
+                .stream().map(movie -> new MovieSummary(movie.getId(), movie.getVietnameseName(), movie.getChineseName())).toList();
     }
 
     @Override
     public List<MovieDetails> searchMoviesForAdmin(String keyword, int limit) {
-        String normalized = SearchNormalizer.normalize(keyword);
-        if (normalized.isBlank() || limit < 1) return List.of();
-        int boundedLimit = Math.min(limit, 50);
-        return movies.searchForAdmin(MovieStatus.ARCHIVED, normalized, PageRequest.of(0, boundedLimit))
+        return fuzzyMatches(movies.findByStatusNotOrderByVietnameseNameAsc(CatalogStatus.ARCHIVED), keyword, limit)
                 .stream().map(this::toDetails).toList();
+    }
+
+    private List<Movie> fuzzyMatches(List<Movie> candidates, String keyword, int limit) {
+        if (keyword == null || keyword.isBlank() || limit < 1) {
+            return List.of();
+        }
+        int boundedLimit = Math.min(limit, 50);
+        return candidates.stream()
+                .map(movie -> new MovieMatch(movie, FuzzySearchMatcher.score(keyword, searchText(movie))))
+                .filter(match -> match.score() >= FuzzySearchMatcher.MIN_SCORE)
+                .sorted(Comparator.comparingDouble(MovieMatch::score).reversed()
+                        .thenComparing(match -> match.movie().getVietnameseName(), String.CASE_INSENSITIVE_ORDER))
+                .limit(boundedLimit)
+                .map(MovieMatch::movie)
+                .toList();
+    }
+
+    private String searchText(Movie movie) {
+        return movie.getVietnameseName() + " " + (movie.getChineseName() == null ? "" : movie.getChineseName())
+                + " " + movie.getSearchName();
+    }
+
+    private record MovieMatch(Movie movie, double score) {
     }
 
     @Override
@@ -74,8 +87,8 @@ public class CatalogQueryService implements CatalogQuery {
     @Override
     public List<SeasonSummary> findPublishedSeasons(long movieId) {
         return movies.findById(movieId)
-                .filter(movie -> movie.getStatus() == MovieStatus.PUBLISHED)
-                .map(movie -> seasons.findByMovie_IdAndStatusOrderBySeasonNumberAsc(movieId, SeasonStatus.PUBLISHED)
+                .filter(movie -> movie.getStatus() == CatalogStatus.PUBLISHED)
+                .map(movie -> seasons.findByMovie_IdAndStatusOrderBySeasonNumberAsc(movieId, CatalogStatus.PUBLISHED)
                         .stream().map(this::toSeasonSummary).toList())
                 .orElseGet(List::of);
     }
@@ -83,40 +96,46 @@ public class CatalogQueryService implements CatalogQuery {
     @Override
     public List<EpisodeSummary> findPublishedEpisodes(long seasonId) {
         return seasons.findById(seasonId)
-                .filter(season -> season.getStatus() == SeasonStatus.PUBLISHED)
-                .filter(season -> season.getMovie().getStatus() == MovieStatus.PUBLISHED)
-                .map(season -> episodes.findBySeason_IdAndStatusOrderByEpisodeNumberAsc(seasonId, EpisodeStatus.PUBLISHED)
-                        .stream().map(this::toEpisodeSummary).toList())
+                .filter(season -> season.getStatus() == CatalogStatus.PUBLISHED)
+                .filter(season -> season.getMovie().getStatus() == CatalogStatus.PUBLISHED)
+                .map(season -> {
+                    List<Episode> parts = episodes.findBySeason_IdOrderByIdAsc(seasonId);
+                    return java.util.stream.IntStream.range(0, parts.size())
+                            .filter(index -> parts.get(index).getStatus() == CatalogStatus.PUBLISHED)
+                            .mapToObj(index -> toEpisodeSummary(parts.get(index), index + 1))
+                            .toList();
+                })
                 .orElseGet(List::of);
     }
 
     @Override
     public Optional<EpisodeMediaView> findEpisodeMedia(long episodeId) {
-        return episodes.findByIdAndStatus(episodeId, EpisodeStatus.PUBLISHED)
-                .filter(episode -> episode.getSeason().getStatus() == SeasonStatus.PUBLISHED)
-                .filter(episode -> episode.getSeason().getMovie().getStatus() == MovieStatus.PUBLISHED)
-                .flatMap(episode -> mediaAssets.findFirstByEpisode_IdOrderByIdAsc(episodeId)
+        return episodes.findByIdAndStatus(episodeId, CatalogStatus.PUBLISHED)
+                .filter(episode -> episode.getSeason().getStatus() == CatalogStatus.PUBLISHED)
+                .filter(episode -> episode.getSeason().getMovie().getStatus() == CatalogStatus.PUBLISHED)
+                .flatMap(episode -> mediaAssets.findFirstByEpisode_IdAndStatusOrderByIdAsc(episodeId, CatalogStatus.PUBLISHED)
                         .map(asset -> toEpisodeMediaView(episode, asset)));
     }
 
     private MovieDetails toDetails(Movie movie) {
-        return new MovieDetails(movie.getId(), movie.getSlug(), movie.getName(), movie.getOriginalName(),
-                movie.getDescription(), movie.getStatus().name());
+        return new MovieDetails(movie.getId(), movie.getVietnameseName(), movie.getChineseName(),
+                movie.getThumbnailFileId(), movie.getDescription(), movie.isFull(), movie.getStatus().name());
     }
 
     private SeasonSummary toSeasonSummary(Season season) {
-        return new SeasonSummary(season.getId(), season.getMovie().getId(), season.getSeasonNumber(), season.getName());
+        return new SeasonSummary(season.getId(), season.getMovie().getId(), season.getSeasonNumber(),
+                season.getOriginalEpisodeCount());
     }
 
-    private EpisodeSummary toEpisodeSummary(Episode episode) {
-        return new EpisodeSummary(episode.getId(), episode.getSeason().getId(), episode.getEpisodeNumber(),
-                episode.getName(), episode.getDescription());
+    private EpisodeSummary toEpisodeSummary(Episode episode, int partNumber) {
+        return new EpisodeSummary(episode.getId(), episode.getSeason().getId(), partNumber);
     }
 
     private EpisodeMediaView toEpisodeMediaView(Episode episode, MediaAsset asset) {
         Season season = episode.getSeason();
         Movie movie = season.getMovie();
-        return new EpisodeMediaView(episode.getId(), movie.getName(), season.getSeasonNumber(), episode.getEpisodeNumber(),
-                episode.getName(), asset.getProviderFileId());
+        int partNumber = Math.toIntExact(episodes.countBySeason_IdAndIdLessThanEqual(season.getId(), episode.getId()));
+        return new EpisodeMediaView(episode.getId(), movie.getVietnameseName(), season.getSeasonNumber(),
+                partNumber, asset.getProviderFileId());
     }
 }

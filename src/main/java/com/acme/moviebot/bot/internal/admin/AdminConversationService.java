@@ -46,19 +46,20 @@ public class AdminConversationService {
 
     public List<BotAction> startMovie(long userId, long chatId) {
         startSession(userId, chatId, AdminFlow.CREATE_MOVIE, AdminSessionState.WAITING_MOVIE_NAME, Map.of());
-        return List.of(new SendTextAction(chatId, "Nhập tên phim:"));
+        return List.of(new SendTextAction(chatId, "Nhập tên Việt của phim:"));
     }
 
     public List<BotAction> startSeason(long userId, long chatId, long movieId) {
         startSession(userId, chatId, AdminFlow.CREATE_SEASON, AdminSessionState.WAITING_SEASON_NUMBER,
                 Map.of("movieId", movieId));
-        return List.of(new SendTextAction(chatId, "Nhập số season (0 trở lên):"));
+        return List.of(new SendTextAction(chatId, "Nhập số season (từ 1 trở lên):"));
     }
 
     public List<BotAction> startEpisode(long userId, long chatId, long seasonId) {
-        startSession(userId, chatId, AdminFlow.CREATE_EPISODE, AdminSessionState.WAITING_EPISODE_NUMBER,
-                Map.of("seasonId", seasonId));
-        return List.of(new SendTextAction(chatId, "Nhập số tập (0 trở lên):"));
+        long episodeId = catalog.createEpisode(new CreateEpisodeCommand(seasonId));
+        startSession(userId, chatId, AdminFlow.CREATE_EPISODE, AdminSessionState.WAITING_EPISODE_VIDEO,
+                Map.of("seasonId", seasonId, "episodeId", episodeId));
+        return List.of(new SendTextAction(chatId, "Hãy gửi video cho phần phim mới."));
     }
 
     public List<BotAction> startSearch(long userId, long chatId) {
@@ -76,10 +77,10 @@ public class AdminConversationService {
         keyboard.add(List.of(new InlineButton("➕ Thêm Season", callbacks.admin("add_season", movieId))));
         List<SeasonSummary> seasons = catalogQuery.findSeasonsForAdmin(movieId);
         for (SeasonSummary season : seasons) {
-            keyboard.add(List.of(new InlineButton("Thêm Episode vào Season " + season.seasonNumber(),
+            keyboard.add(List.of(new InlineButton("Thêm phần phim vào Season " + season.seasonNumber(),
                     callbacks.admin("add_episode", season.id()))));
         }
-        return List.of(new SendTextAction(chatId, movie.name() + " (" + movie.status() + ")", keyboard));
+        return List.of(new SendTextAction(chatId, movie.vietnameseName() + " (" + movie.status() + ")", keyboard));
     }
 
     public List<BotAction> cancel(long userId, long chatId) {
@@ -108,11 +109,16 @@ public class AdminConversationService {
         Map<String, Object> context = readContext(session.getContextJson());
 
         return switch (session.getState()) {
-            case WAITING_MOVIE_NAME -> createMovie(session, update.chatId(), text);
+            case WAITING_MOVIE_NAME -> acceptVietnameseName(session, context, update.chatId(), text);
+            case WAITING_MOVIE_CHINESE_NAME -> acceptChineseName(session, context, update.chatId(), text);
+            case WAITING_MOVIE_DESCRIPTION -> acceptDescription(session, context, update.chatId(), text);
+            case WAITING_MOVIE_FULL -> acceptFull(session, context, update.chatId(), text);
+            case WAITING_MOVIE_THUMBNAIL -> "-".equals(text)
+                    ? createMovie(session, context, update.chatId(), null)
+                    : List.of(new SendTextAction(update.chatId(), "Gửi ảnh thumbnail hoặc dấu - để bỏ qua."));
             case WAITING_MOVIE_SEARCH -> searchMovies(session, update.chatId(), text);
-            case WAITING_SEASON_NUMBER -> createSeason(session, context, update.chatId(), text);
-            case WAITING_EPISODE_NUMBER -> acceptEpisodeNumber(session, context, update.chatId(), text);
-            case WAITING_EPISODE_NAME -> createEpisode(session, context, update.chatId(), text);
+            case WAITING_SEASON_NUMBER -> acceptSeasonNumber(session, context, update.chatId(), text);
+            case WAITING_SEASON_EPISODE_COUNT -> createSeason(session, context, update.chatId(), text);
             default -> List.of(new SendTextAction(update.chatId(), "Hãy hoàn tất bước hiện tại hoặc dùng /cancel."));
         };
     }
@@ -124,12 +130,24 @@ public class AdminConversationService {
             return List.of(new SendTextAction(update.chatId(), "Thao tác quản trị đã hết hạn. Vui lòng bắt đầu lại bằng /admin."));
         }
         AdminSession session = savedSession;
-        if (session == null || session.getState() != AdminSessionState.WAITING_EPISODE_VIDEO) {
-            return List.of(new SendTextAction(update.chatId(), "Chưa có tập nào đang chờ video. Dùng /admin để bắt đầu."));
+        if (session == null) {
+            return List.of(new SendTextAction(update.chatId(), "Chưa có phần phim nào đang chờ video. Dùng /admin để bắt đầu."));
         }
         IncomingMedia media = update.media();
         if (media == null || !StringUtils.hasText(media.fileId())) {
-            return List.of(new SendTextAction(update.chatId(), "Không đọc được metadata video. Hãy gửi lại video."));
+            return List.of(new SendTextAction(update.chatId(), "Không đọc được metadata ảnh/video. Hãy gửi lại."));
+        }
+        if (session.getState() == AdminSessionState.WAITING_MOVIE_THUMBNAIL) {
+            if (media.mimeType() == null || !media.mimeType().startsWith("image/")) {
+                return List.of(new SendTextAction(update.chatId(), "Hãy gửi ảnh thumbnail hoặc dấu - để bỏ qua."));
+            }
+            return createMovie(session, readContext(session.getContextJson()), update.chatId(), media.fileId());
+        }
+        if (session.getState() != AdminSessionState.WAITING_EPISODE_VIDEO) {
+            return List.of(new SendTextAction(update.chatId(), "Chưa có ảnh thumbnail hoặc phần phim nào đang chờ. Dùng /admin để bắt đầu."));
+        }
+        if (media.mimeType() != null && media.mimeType().startsWith("image/")) {
+            return List.of(new SendTextAction(update.chatId(), "Hãy gửi video cho phần phim này."));
         }
         Map<String, Object> context = readContext(session.getContextJson());
         long episodeId = number(context, "episodeId");
@@ -138,9 +156,9 @@ public class AdminConversationService {
                 update.messageId(), media.fileName(), media.mimeType(), media.fileSize(), media.durationSeconds(),
                 media.width(), media.height()));
         sessions.delete(session);
-        return List.of(new SendTextAction(update.chatId(), "Video đã được gắn vào tập phim ✅",
-                List.of(List.of(new InlineButton("✅ Publish Episode", callbacks.admin("publish_episode", episodeId))),
-                        List.of(new InlineButton("➕ Thêm Episode tiếp theo", callbacks.admin("add_episode", seasonId))))));
+        return List.of(new SendTextAction(update.chatId(), "Video đã được gắn vào phần phim ✅",
+                List.of(List.of(new InlineButton("✅ Publish phần phim", callbacks.admin("publish_episode", episodeId))),
+                        List.of(new InlineButton("➕ Thêm phần tiếp theo", callbacks.admin("add_episode", seasonId))))));
     }
 
     @Scheduled(fixedDelay = 10_800_000)
@@ -148,10 +166,42 @@ public class AdminConversationService {
         sessions.deleteByExpiresAtBefore(now());
     }
 
-    private List<BotAction> createMovie(AdminSession session, long chatId, String name) {
-        long movieId = catalog.createMovie(new CreateMovieCommand(name, null, null));
+    private List<BotAction> acceptVietnameseName(AdminSession session, Map<String, Object> context, long chatId, String name) {
+        context.put("vietnameseName", name);
+        touch(session, context, AdminSessionState.WAITING_MOVIE_CHINESE_NAME);
+        return List.of(new SendTextAction(chatId, "Nhập tên Trung (gửi dấu - nếu không có):"));
+    }
+
+    private List<BotAction> acceptChineseName(AdminSession session, Map<String, Object> context, long chatId, String name) {
+        context.put("chineseName", optional(name));
+        touch(session, context, AdminSessionState.WAITING_MOVIE_DESCRIPTION);
+        return List.of(new SendTextAction(chatId, "Nhập giới thiệu (gửi dấu - nếu không có):"));
+    }
+
+    private List<BotAction> acceptDescription(AdminSession session, Map<String, Object> context, long chatId, String description) {
+        context.put("description", optional(description));
+        touch(session, context, AdminSessionState.WAITING_MOVIE_FULL);
+        return List.of(new SendTextAction(chatId, "Phim đã trọn bộ chưa? Gửi true hoặc false:"));
+    }
+
+    private List<BotAction> acceptFull(AdminSession session, Map<String, Object> context, long chatId, String value) {
+        if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
+            touch(session, context);
+            return List.of(new SendTextAction(chatId, "Chỉ nhập true hoặc false cho trạng thái trọn bộ."));
+        }
+        context.put("full", Boolean.parseBoolean(value));
+        touch(session, context, AdminSessionState.WAITING_MOVIE_THUMBNAIL);
+        return List.of(new SendTextAction(chatId, "Gửi ảnh thumbnail hoặc dấu - để bỏ qua:"));
+    }
+
+    private List<BotAction> createMovie(AdminSession session, Map<String, Object> context, long chatId, String thumbnailFileId) {
+        String vietnameseName = (String) context.get("vietnameseName");
+        String chineseName = (String) context.get("chineseName");
+        String description = (String) context.get("description");
+        boolean full = Boolean.TRUE.equals(context.get("full"));
+        long movieId = catalog.createMovie(new CreateMovieCommand(vietnameseName, chineseName, thumbnailFileId, description, full));
         sessions.delete(session);
-        return List.of(new SendTextAction(chatId, "Đã tạo phim: " + name + "\nTrạng thái: DRAFT",
+        return List.of(new SendTextAction(chatId, "Đã tạo phim: " + vietnameseName + "\nTrạng thái: DRAFT",
                 List.of(List.of(new InlineButton("➕ Thêm Season", callbacks.admin("add_season", movieId))),
                         List.of(new InlineButton("✅ Publish phim", callbacks.admin("publish_movie", movieId))))));
     }
@@ -161,50 +211,41 @@ public class AdminConversationService {
         sessions.delete(session);
         if (results.isEmpty()) return List.of(new SendTextAction(chatId, "Không tìm thấy phim phù hợp."));
         List<List<InlineButton>> keyboard = results.stream()
-                .map(movie -> List.of(new InlineButton(movie.name() + " (" + movie.status() + ")",
+                .map(movie -> List.of(new InlineButton(movie.vietnameseName() + " (" + movie.status() + ")",
                         callbacks.admin("manage_movie", movie.id()))))
                 .toList();
         return List.of(new SendTextAction(chatId, "Chọn phim để quản lý:", keyboard));
     }
 
-    private List<BotAction> createSeason(AdminSession session, Map<String, Object> context, long chatId, String text) {
+    private List<BotAction> acceptSeasonNumber(AdminSession session, Map<String, Object> context, long chatId, String text) {
         int seasonNumber;
         try {
-            seasonNumber = parseNonNegative(text, "Số season phải là số nguyên lớn hơn hoặc bằng 0.");
+            seasonNumber = parseNonNegative(text, "Số season phải là số nguyên lớn hơn hoặc bằng 1.");
+            if (seasonNumber < 1) throw new IllegalArgumentException("Số season phải lớn hơn hoặc bằng 1.");
+        } catch (IllegalArgumentException exception) {
+            touch(session, context);
+            return List.of(new SendTextAction(chatId, exception.getMessage()));
+        }
+        context.put("seasonNumber", seasonNumber);
+        touch(session, context, AdminSessionState.WAITING_SEASON_EPISODE_COUNT);
+        return List.of(new SendTextAction(chatId, "Nhập tổng số tập gốc của season (bên Trung):"));
+    }
+
+    private List<BotAction> createSeason(AdminSession session, Map<String, Object> context, long chatId, String text) {
+        int originalEpisodeCount;
+        try {
+            originalEpisodeCount = parseNonNegative(text, "Tổng số tập gốc phải là số nguyên lớn hơn hoặc bằng 0.");
         } catch (IllegalArgumentException exception) {
             touch(session, context);
             return List.of(new SendTextAction(chatId, exception.getMessage()));
         }
         long movieId = number(context, "movieId");
-        long seasonId = catalog.createSeason(new CreateSeasonCommand(movieId, seasonNumber, null));
+        int seasonNumber = Math.toIntExact(number(context, "seasonNumber"));
+        long seasonId = catalog.createSeason(new CreateSeasonCommand(movieId, seasonNumber, originalEpisodeCount));
         sessions.delete(session);
         return List.of(new SendTextAction(chatId, "Đã tạo Season " + seasonNumber + " ở trạng thái DRAFT.",
-                List.of(List.of(new InlineButton("➕ Thêm Episode", callbacks.admin("add_episode", seasonId))),
+                List.of(List.of(new InlineButton("➕ Thêm phần phim", callbacks.admin("add_episode", seasonId))),
                         List.of(new InlineButton("✅ Publish Season", callbacks.admin("publish_season", seasonId))))));
-    }
-
-    private List<BotAction> acceptEpisodeNumber(AdminSession session, Map<String, Object> context, long chatId, String text) {
-        int episodeNumber;
-        try {
-            episodeNumber = parseNonNegative(text, "Số tập phải là số nguyên lớn hơn hoặc bằng 0.");
-        } catch (IllegalArgumentException exception) {
-            touch(session, context);
-            return List.of(new SendTextAction(chatId, exception.getMessage()));
-        }
-        context.put("episodeNumber", episodeNumber);
-        touch(session, context, AdminSessionState.WAITING_EPISODE_NAME);
-        return List.of(new SendTextAction(chatId, "Nhập tên tập (có thể gửi dấu - nếu không có tên):"));
-    }
-
-    private List<BotAction> createEpisode(AdminSession session, Map<String, Object> context, long chatId, String text) {
-        long seasonId = number(context, "seasonId");
-        int episodeNumber = Math.toIntExact(number(context, "episodeNumber"));
-        String name = "-".equals(text) ? null : text;
-        long episodeId = catalog.createEpisode(new CreateEpisodeCommand(seasonId, episodeNumber, name, null));
-        context.put("episodeId", episodeId);
-        touch(session, context, AdminSessionState.WAITING_EPISODE_VIDEO);
-        String displayName = name == null ? "Tập " + episodeNumber : name;
-        return List.of(new SendTextAction(chatId, "Hãy gửi video cho Episode " + episodeNumber + " - " + displayName + "."));
     }
 
     private void startSession(long userId, long chatId, AdminFlow flow, AdminSessionState state, Map<String, Object> context) {
@@ -249,6 +290,10 @@ public class AdminConversationService {
         Object value = context.get(key);
         if (value instanceof Number number) return number.longValue();
         throw new IllegalArgumentException("Thông tin flow bị thiếu. Hãy bắt đầu lại bằng /admin.");
+    }
+
+    private String optional(String value) {
+        return "-".equals(value) ? null : value;
     }
 
     private Map<String, Object> readContext(Map<String, Object> context) {

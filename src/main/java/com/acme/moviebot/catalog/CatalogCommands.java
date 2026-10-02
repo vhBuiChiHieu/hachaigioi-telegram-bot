@@ -5,13 +5,18 @@ public final class CatalogCommands {
     private CatalogCommands() {
     }
 
-    public record CreateMovieCommand(String name, String originalName, String description) {
+    public record CreateMovieCommand(
+            String vietnameseName,
+            String chineseName,
+            String thumbnailFileId,
+            String description,
+            boolean full) {
     }
 
-    public record CreateSeasonCommand(long movieId, int seasonNumber, String name) {
+    public record CreateSeasonCommand(long movieId, int seasonNumber, int originalEpisodeCount) {
     }
 
-    public record CreateEpisodeCommand(long seasonId, int episodeNumber, String name, String description) {
+    public record CreateEpisodeCommand(long seasonId) {
     }
 
     public record AttachMediaCommand(

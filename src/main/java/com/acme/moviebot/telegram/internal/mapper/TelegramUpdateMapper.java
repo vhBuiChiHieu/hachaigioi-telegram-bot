@@ -53,6 +53,23 @@ public class TelegramUpdateMapper {
                     nullableInteger(video.path("height")));
             return Optional.of(new MediaMessageUpdate(dto.updateId(), userId, chatId, messageId, media));
         }
+
+        JsonNode photos = message.path("photo");
+        if (photos.isArray() && !photos.isEmpty()) {
+            JsonNode photo = photos.get(photos.size() - 1);
+            if (photo.hasNonNull("file_id")) {
+                IncomingMedia media = new IncomingMedia(
+                        photo.path("file_id").asText(),
+                        nullableText(photo.path("file_unique_id")),
+                        null,
+                        "image/jpeg",
+                        nullableLong(photo.path("file_size")),
+                        null,
+                        nullableInteger(photo.path("width")),
+                        nullableInteger(photo.path("height")));
+                return Optional.of(new MediaMessageUpdate(dto.updateId(), userId, chatId, messageId, media));
+            }
+        }
         return Optional.empty();
     }
 

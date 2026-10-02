@@ -16,12 +16,9 @@ public final class SearchNormalizer {
         String normalized = value.trim().toLowerCase(Locale.ROOT).replace('đ', 'd');
         normalized = Normalizer.normalize(normalized, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}+", "")
+                .replaceAll("[^\\p{L}\\p{N}]+", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
         return normalized;
-    }
-
-    public static String slug(String value) {
-        return normalize(value).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
     }
 }

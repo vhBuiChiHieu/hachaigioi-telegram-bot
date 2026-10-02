@@ -35,7 +35,7 @@ public class UserCommandHandler {
             case "/start" -> List.of(new SendTextAction(update.chatId(),
                     "Xin chào!\n\nBạn có thể tìm phim bằng:\n/find <tên phim>"));
             case "/help" -> List.of(new SendTextAction(update.chatId(),
-                    "Tìm phim bằng /find <tên phim>. Chọn phim, season và tập để nhận video."));
+                    "Tìm phim bằng /find <tên phim>. Chọn phim, season và phần để nhận video."));
             case "/find" -> search(update.chatId(), argument, 0);
             default -> List.of(new SendTextAction(update.chatId(), "Lệnh chưa được hỗ trợ. Dùng /help để xem hướng dẫn."));
         };
@@ -68,11 +68,12 @@ public class UserCommandHandler {
         int start = Math.min(page * PAGE_SIZE, results.size());
         int end = Math.min(start + PAGE_SIZE, results.size());
         if (start >= end) {
-            return List.of(new SendTextAction(chatId, "Không tìm thấy phim phù hợp với từ khóa này."));
+            return List.of(new SendTextAction(chatId,
+                    "Không tìm thấy phim phù hợp. /find chỉ hiển thị phim đã publish."));
         }
         List<List<InlineButton>> keyboard = new ArrayList<>();
         for (MovieSummary movie : results.subList(start, end)) {
-            keyboard.add(List.of(new InlineButton(movie.name(), callbacks.movie(movie.id()))));
+            keyboard.add(List.of(new InlineButton(movie.vietnameseName(), callbacks.movie(movie.id()))));
         }
         String text = "Kết quả tìm kiếm:";
         if (results.size() > end) {
@@ -92,7 +93,7 @@ public class UserCommandHandler {
         }
         List<SeasonSummary> seasons = catalog.findPublishedSeasons(movieId);
         if (seasons.isEmpty()) {
-            actions.add(new SendTextAction(chatId, movie.get().name() + "\n\nPhim chưa có season được phát hành."));
+            actions.add(new SendTextAction(chatId, movie.get().vietnameseName() + "\n\nPhim chưa có season được phát hành."));
             return;
         }
         int start = page * PAGE_SIZE;
@@ -103,45 +104,42 @@ public class UserCommandHandler {
         }
         List<List<InlineButton>> keyboard = new ArrayList<>();
         for (SeasonSummary season : seasons.subList(start, end)) {
-            String label = season.name() == null || season.name().isBlank()
-                    ? (season.seasonNumber() == 0 ? "Special" : "Season " + season.seasonNumber())
-                    : season.name();
+            String label = "Season " + season.seasonNumber() + " (" + season.originalEpisodeCount() + " tập gốc)";
             keyboard.add(List.of(new InlineButton(label, callbacks.season(season.id()))));
         }
         if (seasons.size() > end) {
             keyboard.add(List.of(new InlineButton("Trang tiếp theo", callbacks.seasonsPage(movieId, page + 1))));
         }
-        actions.add(new SendTextAction(chatId, movie.get().name() + "\n\nChọn season:", keyboard));
+        actions.add(new SendTextAction(chatId, movie.get().vietnameseName() + "\n\nChọn season:", keyboard));
     }
 
     private void showEpisodes(long chatId, long seasonId, int page, List<BotAction> actions) {
         List<EpisodeSummary> episodes = catalog.findPublishedEpisodes(seasonId);
         if (episodes.isEmpty()) {
-            actions.add(new SendTextAction(chatId, "Season này chưa có tập được phát hành."));
+            actions.add(new SendTextAction(chatId, "Season này chưa có phần phim được phát hành."));
             return;
         }
         int start = page * PAGE_SIZE;
         int end = Math.min(start + PAGE_SIZE, episodes.size());
         if (start >= end) {
-            actions.add(new SendTextAction(chatId, "Không còn tập trong trang này."));
+            actions.add(new SendTextAction(chatId, "Không còn phần phim trong trang này."));
             return;
         }
         List<List<InlineButton>> keyboard = new ArrayList<>();
         for (EpisodeSummary episode : episodes.subList(start, end)) {
-            String label = "Tập " + episode.episodeNumber()
-                    + (StringUtils.hasText(episode.name()) ? " - " + episode.name() : "");
+            String label = "Phần " + episode.partNumber();
             keyboard.add(List.of(new InlineButton(label, callbacks.episode(episode.id()))));
         }
         if (episodes.size() > end) {
             keyboard.add(List.of(new InlineButton("Trang tiếp theo", callbacks.episodesPage(seasonId, page + 1))));
         }
-        actions.add(new SendTextAction(chatId, "Chọn tập:", keyboard));
+        actions.add(new SendTextAction(chatId, "Chọn phần phim:", keyboard));
     }
 
     private void sendEpisode(long chatId, long episodeId, List<BotAction> actions) {
         catalog.findEpisodeMedia(episodeId).ifPresentOrElse(
                 media -> actions.add(new SendVideoAction(chatId, media.providerFileId(),
-                        media.movieName() + " - Season " + media.seasonNumber() + " - Tập " + media.episodeNumber())),
-                () -> actions.add(new SendTextAction(chatId, "Video của tập này chưa khả dụng.")));
+                        media.movieName() + " - Season " + media.seasonNumber() + " - Phần " + media.partNumber())),
+                () -> actions.add(new SendTextAction(chatId, "Video của phần phim này chưa khả dụng.")));
     }
 }

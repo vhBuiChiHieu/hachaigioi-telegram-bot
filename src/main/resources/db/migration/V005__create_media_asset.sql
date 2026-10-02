@@ -1,6 +1,7 @@
 CREATE TABLE media_asset (
     id BIGINT NOT NULL AUTO_INCREMENT,
     episode_id BIGINT NOT NULL,
+    status VARCHAR(32) NOT NULL,
     provider VARCHAR(32) NOT NULL,
     media_type VARCHAR(32) NOT NULL,
     provider_file_id VARCHAR(1024) NOT NULL,
