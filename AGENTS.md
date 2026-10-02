@@ -51,6 +51,7 @@ src/main/resources/
 - A movie stores Vietnamese and Chinese names, a Telegram thumbnail file ID, description, and full flag. A season stores the original Chinese episode count; each episode row is an ordered posted part, with order derived from its ID.
 - Movie search ignores case, diacritics, and punctuation, then ranks token matches by Levenshtein similarity. Public `/find` results include published movies; admin search excludes archived movies.
 - `bot` owns transport-neutral command routing, user/admin conversations, persistent admin sessions, update idempotency, `BotAction` creation, and user/admin command menu definitions.
+- Admin catalog navigation lists movies 20 per page by descending ID; selecting a movie opens its seasons, and selecting a season opens its ordered movie parts. Keep the add action first and the selected movie/season status action last.
 - `telegram` owns Telegram HTTP calls, polling, mapping, retries, command menu registration, and action execution. Keep catalog and authorization policy out of this module.
 
 ## Build and run

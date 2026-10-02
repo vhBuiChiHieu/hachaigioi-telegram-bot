@@ -101,6 +101,11 @@ public class CatalogManagementService implements CatalogManagement {
     }
 
     @Override
+    public void archiveSeason(long seasonId) {
+        season(seasonId).archive();
+    }
+
+    @Override
     public void publishEpisode(long episodeId) {
         Episode episode = episode(episodeId);
         MediaAsset asset = mediaAssets.findFirstByEpisode_IdOrderByIdAsc(episodeId)

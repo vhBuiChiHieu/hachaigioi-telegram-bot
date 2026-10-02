@@ -1,5 +1,7 @@
 package com.acme.moviebot.catalog;
 
+import java.util.List;
+
 public final class CatalogViews {
 
     private CatalogViews() {
@@ -18,10 +20,22 @@ public final class CatalogViews {
             String status) {
     }
 
+    public record MoviePage(List<MovieDetails> movies, int page, boolean hasNext) {
+        public MoviePage {
+            movies = List.copyOf(movies);
+        }
+    }
+
     public record SeasonSummary(long id, long movieId, int seasonNumber, int originalEpisodeCount) {
     }
 
+    public record SeasonDetails(long id, long movieId, int seasonNumber, int originalEpisodeCount, String status) {
+    }
+
     public record EpisodeSummary(long id, long seasonId, int partNumber) {
+    }
+
+    public record EpisodeDetails(long id, long seasonId, int partNumber, String status) {
     }
 
     public record EpisodeMediaView(

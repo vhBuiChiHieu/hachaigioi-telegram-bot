@@ -2,10 +2,13 @@ package com.acme.moviebot.catalog.internal.application;
 
 import com.acme.moviebot.catalog.CatalogQuery;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaView;
+import com.acme.moviebot.catalog.CatalogViews.EpisodeDetails;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeSummary;
 import com.acme.moviebot.catalog.CatalogViews.MovieDetails;
+import com.acme.moviebot.catalog.CatalogViews.MoviePage;
 import com.acme.moviebot.catalog.CatalogViews.MovieSummary;
 import com.acme.moviebot.catalog.CatalogViews.SeasonSummary;
+import com.acme.moviebot.catalog.CatalogViews.SeasonDetails;
 import com.acme.moviebot.catalog.internal.domain.Episode;
 import com.acme.moviebot.catalog.internal.domain.CatalogStatus;
 import com.acme.moviebot.catalog.internal.domain.MediaAsset;
@@ -19,6 +22,8 @@ import com.acme.moviebot.catalog.internal.persistence.SeasonRepository;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +56,15 @@ public class CatalogQueryService implements CatalogQuery {
                 .stream().map(this::toDetails).toList();
     }
 
+    @Override
+    public MoviePage findMoviesForAdmin(int page, int size) {
+        if (page < 0 || size < 1) {
+            throw new IllegalArgumentException("Số trang và kích thước trang phải hợp lệ.");
+        }
+        var result = movies.findAll(PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id")));
+        return new MoviePage(result.getContent().stream().map(this::toDetails).toList(), page, result.hasNext());
+    }
+
     private List<Movie> fuzzyMatches(List<Movie> candidates, String keyword, int limit) {
         if (keyword == null || keyword.isBlank() || limit < 1) {
             return List.of();
@@ -80,8 +94,21 @@ public class CatalogQueryService implements CatalogQuery {
     }
 
     @Override
-    public List<SeasonSummary> findSeasonsForAdmin(long movieId) {
-        return seasons.findByMovie_IdOrderBySeasonNumberAsc(movieId).stream().map(this::toSeasonSummary).toList();
+    public List<SeasonDetails> findSeasonsForAdmin(long movieId) {
+        return seasons.findByMovie_IdOrderBySeasonNumberAsc(movieId).stream().map(this::toSeasonDetails).toList();
+    }
+
+    @Override
+    public Optional<SeasonDetails> findSeasonForAdmin(long seasonId) {
+        return seasons.findById(seasonId).map(this::toSeasonDetails);
+    }
+
+    @Override
+    public List<EpisodeDetails> findEpisodesForAdmin(long seasonId) {
+        List<Episode> parts = episodes.findBySeason_IdOrderByIdAsc(seasonId);
+        return java.util.stream.IntStream.range(0, parts.size())
+                .mapToObj(index -> toEpisodeDetails(parts.get(index), index + 1))
+                .toList();
     }
 
     @Override
@@ -127,8 +154,17 @@ public class CatalogQueryService implements CatalogQuery {
                 season.getOriginalEpisodeCount());
     }
 
+    private SeasonDetails toSeasonDetails(Season season) {
+        return new SeasonDetails(season.getId(), season.getMovie().getId(), season.getSeasonNumber(),
+                season.getOriginalEpisodeCount(), season.getStatus().name());
+    }
+
     private EpisodeSummary toEpisodeSummary(Episode episode, int partNumber) {
         return new EpisodeSummary(episode.getId(), episode.getSeason().getId(), partNumber);
+    }
+
+    private EpisodeDetails toEpisodeDetails(Episode episode, int partNumber) {
+        return new EpisodeDetails(episode.getId(), episode.getSeason().getId(), partNumber, episode.getStatus().name());
     }
 
     private EpisodeMediaView toEpisodeMediaView(Episode episode, MediaAsset asset) {

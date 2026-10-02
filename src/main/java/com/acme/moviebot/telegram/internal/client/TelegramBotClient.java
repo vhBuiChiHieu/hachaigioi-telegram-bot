@@ -10,6 +10,8 @@ public interface TelegramBotClient {
 
     void sendMessage(long chatId, String text, List<List<Map<String, String>>> keyboard);
 
+    void sendPhoto(long chatId, String fileId, String caption);
+
     void sendVideo(long chatId, String fileId, String caption);
 
     void editMessageText(long chatId, long messageId, String text, List<List<Map<String, String>>> keyboard);

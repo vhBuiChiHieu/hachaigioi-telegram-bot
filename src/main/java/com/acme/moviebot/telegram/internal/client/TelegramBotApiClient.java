@@ -57,6 +57,15 @@ public class TelegramBotApiClient implements TelegramBotClient {
     }
 
     @Override
+    public void sendPhoto(long chatId, String fileId, String caption) {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("chat_id", chatId);
+        request.put("photo", fileId);
+        if (caption != null && !caption.isBlank()) request.put("caption", caption);
+        call("sendPhoto", request);
+    }
+
+    @Override
     public void sendVideo(long chatId, String fileId, String caption) {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("chat_id", chatId);

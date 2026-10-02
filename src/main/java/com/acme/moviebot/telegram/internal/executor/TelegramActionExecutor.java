@@ -4,6 +4,7 @@ import com.acme.moviebot.bot.model.AnswerCallbackAction;
 import com.acme.moviebot.bot.model.BotAction;
 import com.acme.moviebot.bot.model.EditMessageAction;
 import com.acme.moviebot.bot.model.InlineButton;
+import com.acme.moviebot.bot.model.SendPhotoAction;
 import com.acme.moviebot.bot.model.SendTextAction;
 import com.acme.moviebot.bot.model.SendVideoAction;
 import com.acme.moviebot.telegram.internal.client.TelegramApiException;
@@ -41,6 +42,8 @@ public class TelegramActionExecutor {
     private void executeOnce(BotAction action) {
         if (action instanceof SendTextAction send) {
             client.sendMessage(send.chatId(), send.text(), keyboard(send.keyboard()));
+        } else if (action instanceof SendPhotoAction send) {
+            client.sendPhoto(send.chatId(), send.fileId(), send.caption());
         } else if (action instanceof SendVideoAction send) {
             client.sendVideo(send.chatId(), send.fileId(), send.caption());
         } else if (action instanceof EditMessageAction edit) {

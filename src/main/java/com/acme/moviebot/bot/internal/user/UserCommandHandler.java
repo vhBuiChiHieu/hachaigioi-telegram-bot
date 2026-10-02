@@ -2,6 +2,7 @@ package com.acme.moviebot.bot.internal.user;
 
 import com.acme.moviebot.bot.internal.CallbackDataCodec;
 import com.acme.moviebot.bot.internal.CallbackDataCodec.DecodedCallback;
+import com.acme.moviebot.bot.internal.MovieDetailsPresenter;
 import com.acme.moviebot.bot.model.AnswerCallbackAction;
 import com.acme.moviebot.bot.model.BotAction;
 import com.acme.moviebot.bot.model.CallbackUpdate;
@@ -11,6 +12,7 @@ import com.acme.moviebot.bot.model.SendVideoAction;
 import com.acme.moviebot.bot.model.TextMessageUpdate;
 import com.acme.moviebot.catalog.CatalogQuery;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeSummary;
+import com.acme.moviebot.catalog.CatalogViews.MovieDetails;
 import com.acme.moviebot.catalog.CatalogViews.MovieSummary;
 import com.acme.moviebot.catalog.CatalogViews.SeasonSummary;
 import java.util.ArrayList;
@@ -86,14 +88,20 @@ public class UserCommandHandler {
     }
 
     private void showSeasons(long chatId, long movieId, int page, List<BotAction> actions) {
-        var movie = catalog.findMovie(movieId).filter(item -> "PUBLISHED".equals(item.status()));
-        if (movie.isEmpty()) {
+        MovieDetails movie = catalog.findMovie(movieId).filter(item -> "PUBLISHED".equals(item.status())).orElse(null);
+        if (movie == null) {
             actions.add(new SendTextAction(chatId, "Không tìm thấy phim đã phát hành."));
             return;
         }
+
         List<SeasonSummary> seasons = catalog.findPublishedSeasons(movieId);
         if (seasons.isEmpty()) {
-            actions.add(new SendTextAction(chatId, movie.get().vietnameseName() + "\n\nPhim chưa có season được phát hành."));
+            if (page == 0) {
+                actions.addAll(MovieDetailsPresenter.present(chatId, movie, null,
+                        "📚 Phim chưa có mùa được phát hành.", List.of()));
+            } else {
+                actions.add(new SendTextAction(chatId, "Không còn season trong trang này."));
+            }
             return;
         }
         int start = page * PAGE_SIZE;
@@ -110,7 +118,13 @@ public class UserCommandHandler {
         if (seasons.size() > end) {
             keyboard.add(List.of(new InlineButton("Trang tiếp theo", callbacks.seasonsPage(movieId, page + 1))));
         }
-        actions.add(new SendTextAction(chatId, movie.get().vietnameseName() + "\n\nChọn season:", keyboard));
+
+        if (page == 0) {
+            actions.addAll(MovieDetailsPresenter.present(chatId, movie, null, "📚 Chọn mùa:", keyboard));
+        } else {
+            actions.add(new SendTextAction(chatId,
+                    "🎬 " + movie.vietnameseName() + "\n\n📚 Chọn mùa (trang " + (page + 1) + "):", keyboard));
+        }
     }
 
     private void showEpisodes(long chatId, long seasonId, int page, List<BotAction> actions) {

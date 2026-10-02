@@ -19,6 +19,8 @@ public interface CatalogManagement {
 
     void publishSeason(long seasonId);
 
+    void archiveSeason(long seasonId);
+
     void publishEpisode(long episodeId);
 
     void archiveMovie(long movieId);
