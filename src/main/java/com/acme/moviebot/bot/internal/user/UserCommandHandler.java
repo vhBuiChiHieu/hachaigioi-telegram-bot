@@ -11,6 +11,7 @@ import com.acme.moviebot.bot.model.SendTextAction;
 import com.acme.moviebot.bot.model.SendVideoAction;
 import com.acme.moviebot.bot.model.TextMessageUpdate;
 import com.acme.moviebot.catalog.CatalogQuery;
+import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaView;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeSummary;
 import com.acme.moviebot.catalog.CatalogViews.MovieDetails;
 import com.acme.moviebot.catalog.CatalogViews.MovieSummary;
@@ -41,7 +42,7 @@ public class UserCommandHandler {
             case "/start" -> List.of(new SendTextAction(update.chatId(),
                     "Xin chào!\n\nBạn có thể tìm phim bằng /find <tên phim>, hoặc gửi /find rồi nhập từ khóa ở tin nhắn tiếp theo."));
             case "/help" -> List.of(new SendTextAction(update.chatId(),
-                    "Tìm phim bằng /find <tên phim>, hoặc gửi /find rồi nhập từ khóa ở tin nhắn tiếp theo. Chọn phim, season và phần để nhận video."));
+                    "Tìm phim bằng /find <tên phim>, hoặc gửi /find rồi nhập từ khóa ở tin nhắn tiếp theo. Chọn phim và mùa để nhận các video trong mùa đó."));
             case "/find" -> searchCommand(update, argument);
             default -> List.of(new SendTextAction(update.chatId(), "Lệnh chưa được hỗ trợ. Dùng /help để xem hướng dẫn."));
         };
@@ -65,11 +66,11 @@ public class UserCommandHandler {
         try {
             switch (callback.type()) {
                 case "m" -> showSeasons(update.chatId(), callback.longArgument(0), 0, actions);
-                case "s" -> showEpisodes(update.chatId(), callback.longArgument(0), 0, actions);
+                case "s" -> showEpisodes(update.chatId(), callback.longArgument(0), actions);
                 case "e" -> sendEpisode(update.chatId(), callback.longArgument(0), actions);
                 case "mp" -> actions.addAll(search(update.chatId(), callback.stringArgument(1), callback.intArgument(0)));
                 case "sp" -> showSeasons(update.chatId(), callback.longArgument(0), callback.intArgument(1), actions);
-                case "ep" -> showEpisodes(update.chatId(), callback.longArgument(0), callback.intArgument(1), actions);
+                case "ep" -> showEpisodes(update.chatId(), callback.longArgument(0), actions);
                 default -> actions.add(new SendTextAction(update.chatId(), "Lựa chọn không hợp lệ hoặc đã hết hạn."));
             }
         } catch (IllegalArgumentException | IndexOutOfBoundsException exception) {
@@ -153,34 +154,36 @@ public class UserCommandHandler {
         }
     }
 
-    private void showEpisodes(long chatId, long seasonId, int page, List<BotAction> actions) {
+    private void showEpisodes(long chatId, long seasonId, List<BotAction> actions) {
         List<EpisodeSummary> episodes = catalog.findPublishedEpisodes(seasonId);
         if (episodes.isEmpty()) {
-            actions.add(new SendTextAction(chatId, "Season này chưa có phần phim được phát hành."));
+            actions.add(new SendTextAction(chatId, "Mùa này chưa có phần phim được phát hành."));
             return;
         }
-        int start = page * PAGE_SIZE;
-        int end = Math.min(start + PAGE_SIZE, episodes.size());
-        if (start >= end) {
-            actions.add(new SendTextAction(chatId, "Không còn phần phim trong trang này."));
-            return;
+        List<String> unavailableParts = new ArrayList<>();
+        for (EpisodeSummary episode : episodes) {
+            var media = catalog.findEpisodeMedia(episode.id());
+            if (media.isPresent()) {
+                actions.add(videoAction(chatId, media.get()));
+            } else {
+                unavailableParts.add("Phần " + episode.partNumber());
+            }
         }
-        List<List<InlineButton>> keyboard = new ArrayList<>();
-        for (EpisodeSummary episode : episodes.subList(start, end)) {
-            String label = "Phần " + episode.partNumber();
-            keyboard.add(List.of(new InlineButton(label, callbacks.episode(episode.id()))));
+        if (!unavailableParts.isEmpty()) {
+            actions.add(new SendTextAction(chatId,
+                    "Video chưa khả dụng cho: " + String.join(", ", unavailableParts) + "."));
         }
-        if (episodes.size() > end) {
-            keyboard.add(List.of(new InlineButton("Trang tiếp theo", callbacks.episodesPage(seasonId, page + 1))));
-        }
-        actions.add(new SendTextAction(chatId, "Chọn phần phim:", keyboard));
     }
 
     private void sendEpisode(long chatId, long episodeId, List<BotAction> actions) {
         catalog.findEpisodeMedia(episodeId).ifPresentOrElse(
-                media -> actions.add(new SendVideoAction(chatId, media.providerFileId(),
-                        media.movieName() + " - Season " + media.seasonNumber() + " - Phần " + media.partNumber())),
+                media -> actions.add(videoAction(chatId, media)),
                 () -> actions.add(new SendTextAction(chatId, "Video của phần phim này chưa khả dụng.")));
+    }
+
+    private SendVideoAction videoAction(long chatId, EpisodeMediaView media) {
+        return new SendVideoAction(chatId, media.providerFileId(),
+                media.movieName() + " - Mùa " + media.seasonNumber() + " - Phần " + media.partNumber());
     }
 
     private record SearchConversation(long userId, long chatId) {
