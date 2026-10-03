@@ -79,3 +79,4 @@ src/main/resources/
 - Keep Hibernate schema management set to `validate`; do not use `ddl-auto: update`.
 - Store secrets only in environment variables or local `.env`; update `.env.example` with empty or safe sample values when configuration changes.
 - Do not log Telegram tokens, database passwords, or other secret values.
+- `src/main/resources/logback-spring.xml` keeps console logging and writes INFO and higher to `./logs/movie-bot.yyyy-MM-dd_HH.log`, rolling hourly in the JVM's default time zone and appending on restart.
