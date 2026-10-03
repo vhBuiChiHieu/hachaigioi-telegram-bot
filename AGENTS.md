@@ -59,6 +59,7 @@ src/main/resources/
 - Compile with `./mvnw -q compile` or, on Windows, `./mvnw.cmd -q compile`.
 - Run the application with `./mvnw spring-boot:run` or `./mvnw.cmd spring-boot:run` from the repository root.
 - Run tests with `./mvnw test` or `./mvnw.cmd test` when the change or request calls for them.
+- Put tests under `src/test/java` using the matching production package. Use JUnit Jupiter, AssertJ, and Mockito for isolated tests; use Spring context and Testcontainers only when testing framework or database integration.
 - Start local MySQL with `docker compose up -d mysql`.
 - Spring Boot imports the optional root `.env` file. Operating-system environment variables and command-line arguments take precedence. Never print or commit secrets; keep real credentials in `.env`, which is ignored by Git.
 
