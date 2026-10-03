@@ -1,6 +1,6 @@
 # Telegram Movie Bot
 
-Backend Telegram bot theo kiến trúc modular monolith, Java 21, Spring Boot và Maven. MySQL lưu catalog, admin session và idempotency key; video được gửi lại bằng Telegram `file_id`.
+Backend Telegram bot theo kiến trúc modular monolith, Java 25, Spring Boot và Maven. MySQL lưu catalog, admin session và idempotency key; video được gửi lại bằng Telegram `file_id`.
 
 ## Chạy local
 

@@ -18,7 +18,7 @@
     <description>Modular Telegram movie catalog and delivery bot</description>
 
     <properties>
-        <java.version>21</java.version>
+        <java.version>25</java.version>
         <spring-modulith.version>1.4.13</spring-modulith.version>
     </properties>
 

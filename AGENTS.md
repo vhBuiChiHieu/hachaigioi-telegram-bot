@@ -2,7 +2,7 @@
 
 ## Project
 
-- Java 21, Maven, Spring Boot 3.5, Spring Modulith, and MySQL.
+- Java 25, Maven, Spring Boot 3.5, Spring Modulith, and MySQL.
 - This is a single deployable Maven application organized into the `access`, `catalog`, `bot`, and `telegram` modules.
 
 ## Source layout
