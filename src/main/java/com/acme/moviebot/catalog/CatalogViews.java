@@ -20,7 +20,7 @@ public final class CatalogViews {
             String status) {
     }
 
-    public record MoviePage(List<MovieDetails> movies, int page, boolean hasNext) {
+    public record MoviePage(List<MovieDetails> movies, int page, int totalPages, boolean hasNext) {
         public MoviePage {
             movies = List.copyOf(movies);
         }

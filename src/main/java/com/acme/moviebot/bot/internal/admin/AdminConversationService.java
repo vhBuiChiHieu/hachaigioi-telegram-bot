@@ -3,6 +3,7 @@ package com.acme.moviebot.bot.internal.admin;
 import com.acme.moviebot.bot.internal.CallbackDataCodec;
 import com.acme.moviebot.bot.internal.MovieDetailsPresenter;
 import com.acme.moviebot.bot.model.BotAction;
+import com.acme.moviebot.bot.model.EditMessageAction;
 import com.acme.moviebot.bot.model.EditMessageKeyboardAction;
 import com.acme.moviebot.bot.model.IncomingMedia;
 import com.acme.moviebot.bot.model.InlineButton;
@@ -99,28 +100,63 @@ public class AdminConversationService {
     }
 
     public List<BotAction> showMovies(long chatId, int page) {
+        return renderMoviesPage(chatId, page, null);
+    }
+
+    public List<BotAction> showMoviePage(long chatId, int page, long messageId) {
+        if (messageId < 1) {
+            return List.of(new SendTextAction(chatId, "Không thể cập nhật danh sách phim. Vui lòng mở lại danh sách."));
+        }
+        return renderMoviesPage(chatId, page, messageId);
+    }
+
+    private List<BotAction> renderMoviesPage(long chatId, int page, Long messageId) {
         MoviePage moviePage = catalogQuery.findMoviesForAdmin(page, MOVIES_PAGE_SIZE);
         if (moviePage.movies().isEmpty() && page == 0) {
             return List.of(new SendTextAction(chatId, "Chưa có phim nào."));
         }
 
         List<List<InlineButton>> keyboard = new ArrayList<>();
-        for (MovieDetails movie : moviePage.movies()) {
-            keyboard.add(List.of(new InlineButton(movieButtonLabel(movie), callbacks.admin("manage_movie", movie.id()))));
+        StringBuilder text = new StringBuilder("🎞 Danh sách phim quản trị");
+        int currentPage = moviePage.page();
+        long displayedPageNumber = (long) currentPage + 1;
+        long displayedTotalPages = Math.max(moviePage.totalPages(), displayedPageNumber);
+        text.append("\n📄 Trang ").append(displayedPageNumber).append('/').append(displayedTotalPages)
+                .append(" · ").append(moviePage.movies().size()).append(" phim");
+
+        long firstIndex = (long) currentPage * MOVIES_PAGE_SIZE + 1;
+        for (int i = 0; i < moviePage.movies().size(); i++) {
+            MovieDetails movie = moviePage.movies().get(i);
+            long index = firstIndex + i;
+            keyboard.add(List.of(new InlineButton(movieButtonLabel(index, movie),
+                    callbacks.admin("manage_movie", movie.id()))));
+            appendMovieListEntry(text, index, movie);
         }
 
-        List<InlineButton> navigation = new ArrayList<>();
-        if (page > 0) {
-            navigation.add(new InlineButton("⬅️ Trang trước", callbacks.admin("list_movies", page - 1)));
+        if (moviePage.movies().isEmpty()) {
+            text.append("\n\nTrang này hiện không có phim.");
         }
-        if (moviePage.hasNext()) {
-            navigation.add(new InlineButton("Trang sau ➡️", callbacks.admin("list_movies", page + 1)));
-        }
-        if (!navigation.isEmpty()) {
-            keyboard.add(navigation);
-        }
+        keyboard.add(List.of(
+                new InlineButton("⬅️ Trang trước", currentPage > 0
+                        ? callbacks.admin("page_movies", currentPage - 1) : callbacks.admin("page_movies_noop")),
+                new InlineButton("Trang " + displayedPageNumber + "/" + displayedTotalPages,
+                        callbacks.admin("page_movies_noop")),
+                new InlineButton("Trang sau ➡️", moviePage.hasNext()
+                        ? callbacks.admin("page_movies", currentPage + 1) : callbacks.admin("page_movies_noop"))));
 
-        return List.of(new SendTextAction(chatId, "Danh sách phim · Trang " + (page + 1), keyboard));
+        if (messageId != null) {
+            return List.of(new EditMessageAction(chatId, messageId, text.toString(), keyboard));
+        }
+        return List.of(new SendTextAction(chatId, text.toString(), keyboard));
+    }
+
+    private void appendMovieListEntry(StringBuilder text, long index, MovieDetails movie) {
+        text.append("\n\n").append('#').append(index).append(" · ").append(movie.vietnameseName())
+                .append("\n   🆔 Mã phim: ").append(movie.id())
+                .append("\n   🇨🇳 Tên gốc: ")
+                .append(StringUtils.hasText(movie.chineseName()) ? movie.chineseName().trim() : "Chưa cập nhật")
+                .append("\n   📦 Trạng thái phát hành: ").append(statusLabel(movie.status()))
+                .append("\n   📺 Tình trạng: ").append(movie.full() ? "Trọn bộ" : "Đang cập nhật");
     }
 
     public List<BotAction> showMovieManagement(long chatId, long movieId) {
@@ -313,14 +349,15 @@ public class AdminConversationService {
         if (notice != null && !notice.isBlank()) text.append(notice).append("\n\n");
     }
 
-    private String movieButtonLabel(MovieDetails movie) {
-        String prefix = movie.id() + " · ";
+    private String movieButtonLabel(long index, MovieDetails movie) {
+        String prefix = "#" + index + " · ";
+        String vietnameseName = movie.vietnameseName();
         int availableNameLength = 64 - prefix.codePointCount(0, prefix.length());
-        String name = movie.vietnameseName();
-        if (name.codePointCount(0, name.length()) > availableNameLength) {
-            name = name.substring(0, name.offsetByCodePoints(0, availableNameLength - 1)) + "…";
+        if (vietnameseName.codePointCount(0, vietnameseName.length()) > availableNameLength) {
+            vietnameseName = vietnameseName.substring(0,
+                    vietnameseName.offsetByCodePoints(0, availableNameLength - 1)) + "…";
         }
-        return prefix + name;
+        return prefix + vietnameseName;
     }
 
     public List<BotAction> cancel(long userId, long chatId) {

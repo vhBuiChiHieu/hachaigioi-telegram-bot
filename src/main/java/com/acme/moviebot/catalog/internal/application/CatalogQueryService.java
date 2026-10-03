@@ -62,7 +62,8 @@ public class CatalogQueryService implements CatalogQuery {
             throw new IllegalArgumentException("Số trang và kích thước trang phải hợp lệ.");
         }
         var result = movies.findAll(PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id")));
-        return new MoviePage(result.getContent().stream().map(this::toDetails).toList(), page, result.hasNext());
+        return new MoviePage(result.getContent().stream().map(this::toDetails).toList(), page,
+                result.getTotalPages(), result.hasNext());
     }
 
     private List<Movie> fuzzyMatches(List<Movie> candidates, String keyword, int limit) {

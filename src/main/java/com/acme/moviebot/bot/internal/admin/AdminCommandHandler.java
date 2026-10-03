@@ -48,6 +48,8 @@ public class AdminCommandHandler {
         return switch (action) {
             case "add_movie" -> conversations.startMovie(update.userId(), update.chatId());
             case "list_movies" -> showMovies(update.chatId(), id);
+            case "page_movies" -> showMoviePage(update.chatId(), id, update.messageId());
+            case "page_movies_noop" -> List.of();
             case "search_movie" -> conversations.startSearch(update.userId(), update.chatId());
             case "manage_movie" -> conversations.showMovieManagement(update.chatId(), requireId(id));
             case "manage_general" -> conversations.expandMovieGeneral(update.chatId(), update.messageId(), requireId(id));
@@ -115,6 +117,17 @@ public class AdminCommandHandler {
             return List.of(new SendTextAction(chatId, "Trang danh sách phim không hợp lệ."));
         }
         return conversations.showMovies(chatId, (int) pageNumber);
+    }
+
+    private List<BotAction> showMoviePage(long chatId, Long page, Long messageId) {
+        long pageNumber = page == null ? 0 : page;
+        if (pageNumber < 0 || pageNumber > Integer.MAX_VALUE) {
+            return List.of(new SendTextAction(chatId, "Trang danh sách phim không hợp lệ."));
+        }
+        if (messageId == null || messageId < 1) {
+            return List.of(new SendTextAction(chatId, "Không thể cập nhật trang. Vui lòng mở lại danh sách phim."));
+        }
+        return conversations.showMoviePage(chatId, (int) pageNumber, messageId);
     }
 
     private List<BotAction> unauthorized(long chatId) {
