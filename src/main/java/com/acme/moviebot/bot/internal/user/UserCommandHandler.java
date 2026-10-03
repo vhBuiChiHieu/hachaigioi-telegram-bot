@@ -17,6 +17,8 @@ import com.acme.moviebot.catalog.CatalogViews.MovieSummary;
 import com.acme.moviebot.catalog.CatalogViews.SeasonSummary;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -24,6 +26,8 @@ import org.springframework.util.StringUtils;
 public class UserCommandHandler {
 
     private static final int PAGE_SIZE = 10;
+    private static final String SEARCH_PROMPT = "Cú pháp tìm phim: /find <tên phim>. Bạn cũng có thể gửi trực tiếp từ khóa cần tìm trong tin nhắn tiếp theo.";
+    private final Set<SearchConversation> pendingSearchInputs = ConcurrentHashMap.newKeySet();
     private final CatalogQuery catalog;
     private final CallbackDataCodec callbacks;
 
@@ -35,12 +39,24 @@ public class UserCommandHandler {
     public List<BotAction> handleCommand(TextMessageUpdate update, String command, String argument) {
         return switch (command) {
             case "/start" -> List.of(new SendTextAction(update.chatId(),
-                    "Xin chào!\n\nBạn có thể tìm phim bằng:\n/find <tên phim>"));
+                    "Xin chào!\n\nBạn có thể tìm phim bằng /find <tên phim>, hoặc gửi /find rồi nhập từ khóa ở tin nhắn tiếp theo."));
             case "/help" -> List.of(new SendTextAction(update.chatId(),
-                    "Tìm phim bằng /find <tên phim>. Chọn phim, season và phần để nhận video."));
-            case "/find" -> search(update.chatId(), argument, 0);
+                    "Tìm phim bằng /find <tên phim>, hoặc gửi /find rồi nhập từ khóa ở tin nhắn tiếp theo. Chọn phim, season và phần để nhận video."));
+            case "/find" -> searchCommand(update, argument);
             default -> List.of(new SendTextAction(update.chatId(), "Lệnh chưa được hỗ trợ. Dùng /help để xem hướng dẫn."));
         };
+    }
+
+    public boolean awaitsSearchKeyword(long userId, long chatId) {
+        return pendingSearchInputs.contains(new SearchConversation(userId, chatId));
+    }
+
+    public List<BotAction> handleSearchKeyword(TextMessageUpdate update) {
+        if (!StringUtils.hasText(update.text())) {
+            return List.of(new SendTextAction(update.chatId(), SEARCH_PROMPT));
+        }
+        pendingSearchInputs.remove(new SearchConversation(update.userId(), update.chatId()));
+        return search(update.chatId(), update.text().trim(), 0);
     }
 
     public List<BotAction> handleCallback(CallbackUpdate update, DecodedCallback callback) {
@@ -87,6 +103,16 @@ public class UserCommandHandler {
         return List.of(new SendTextAction(chatId, text, keyboard));
     }
 
+    private List<BotAction> searchCommand(TextMessageUpdate update, String keyword) {
+        SearchConversation conversation = new SearchConversation(update.userId(), update.chatId());
+        if (!StringUtils.hasText(keyword)) {
+            pendingSearchInputs.add(conversation);
+            return List.of(new SendTextAction(update.chatId(), SEARCH_PROMPT));
+        }
+        pendingSearchInputs.remove(conversation);
+        return search(update.chatId(), keyword, 0);
+    }
+
     private void showSeasons(long chatId, long movieId, int page, List<BotAction> actions) {
         MovieDetails movie = catalog.findMovie(movieId).filter(item -> "PUBLISHED".equals(item.status())).orElse(null);
         if (movie == null) {
@@ -112,7 +138,7 @@ public class UserCommandHandler {
         }
         List<List<InlineButton>> keyboard = new ArrayList<>();
         for (SeasonSummary season : seasons.subList(start, end)) {
-            String label = "Season " + season.seasonNumber() + " (" + season.originalEpisodeCount() + " tập gốc)";
+            String label = "Mùa " + season.seasonNumber() + " (" + season.originalEpisodeCount() + " tập)";
             keyboard.add(List.of(new InlineButton(label, callbacks.season(season.id()))));
         }
         if (seasons.size() > end) {
@@ -155,5 +181,8 @@ public class UserCommandHandler {
                 media -> actions.add(new SendVideoAction(chatId, media.providerFileId(),
                         media.movieName() + " - Season " + media.seasonNumber() + " - Phần " + media.partNumber())),
                 () -> actions.add(new SendTextAction(chatId, "Video của phần phim này chưa khả dụng.")));
+    }
+
+    private record SearchConversation(long userId, long chatId) {
     }
 }

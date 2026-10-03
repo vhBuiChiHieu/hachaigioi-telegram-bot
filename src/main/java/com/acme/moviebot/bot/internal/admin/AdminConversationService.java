@@ -108,7 +108,7 @@ public class AdminConversationService {
         List<List<InlineButton>> keyboard = new ArrayList<>();
         keyboard.add(List.of(new InlineButton("➕ Thêm Season", callbacks.admin("add_season", movieId))));
         for (SeasonDetails season : seasons) {
-            String label = "Season " + season.seasonNumber() + " (" + season.status() + ")";
+            String label = "Mùa " + season.seasonNumber() + " (" + season.status() + ")";
             keyboard.add(List.of(new InlineButton(label, callbacks.admin("manage_season", season.id()))));
         }
         keyboard.add(List.of(movieStatusButton(movie)));

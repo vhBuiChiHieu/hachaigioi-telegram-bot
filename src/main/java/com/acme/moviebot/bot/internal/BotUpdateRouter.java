@@ -52,6 +52,9 @@ public class BotUpdateRouter {
             return admins.handleCallback(new CallbackUpdate(update.updateId(), update.userId(), update.chatId(), "", "a:cancel"), "cancel", null);
         }
         if (admins.hasSession(update.userId(), update.chatId())) return admins.handleText(update);
+        if (!command.startsWith("/") && users.awaitsSearchKeyword(update.userId(), update.chatId())) {
+            return users.handleSearchKeyword(update);
+        }
         return users.handleCommand(update, command, argument);
     }
 
