@@ -5,6 +5,7 @@ import com.acme.moviebot.bot.internal.CallbackDataCodec.DecodedCallback;
 import com.acme.moviebot.bot.internal.MovieDetailsPresenter;
 import com.acme.moviebot.bot.model.AnswerCallbackAction;
 import com.acme.moviebot.bot.model.BotAction;
+import com.acme.moviebot.bot.model.BotUpdate;
 import com.acme.moviebot.bot.model.CallbackUpdate;
 import com.acme.moviebot.bot.model.InlineButton;
 import com.acme.moviebot.bot.model.SendTextAction;
@@ -39,13 +40,24 @@ public class UserCommandHandler {
 
     public List<BotAction> handleCommand(TextMessageUpdate update, String command, String argument) {
         return switch (command) {
-            case "/start" -> List.of(new SendTextAction(update.chatId(),
-                    "Xin chào!\n\nBạn có thể tìm phim bằng /find <tên phim>, hoặc gửi /find rồi nhập từ khóa ở tin nhắn tiếp theo."));
-            case "/help" -> List.of(new SendTextAction(update.chatId(),
-                    "Tìm phim bằng /find <tên phim>, hoặc gửi /find rồi nhập từ khóa ở tin nhắn tiếp theo. Chọn phim và mùa để nhận các video trong mùa đó."));
+            case "/start", "/menu" -> menu(update);
+            case "/help" -> help(update.chatId());
             case "/find" -> searchCommand(update, argument);
             default -> List.of(new SendTextAction(update.chatId(), "Lệnh chưa được hỗ trợ. Dùng /help để xem hướng dẫn."));
         };
+    }
+
+    private List<BotAction> menu(BotUpdate update) {
+        pendingSearchInputs.remove(new SearchConversation(update.userId(), update.chatId()));
+        return List.of(new SendTextAction(update.chatId(),
+                "Xin chào! Chào mừng bạn đến với kênh phim.\n\nChọn chức năng bên dưới để bắt đầu:",
+                List.of(List.of(new InlineButton("🔎 Find", "u:find")),
+                        List.of(new InlineButton("❓ Help", "u:help")))));
+    }
+
+    private List<BotAction> help(long chatId) {
+        return List.of(new SendTextAction(chatId,
+                "Dùng /menu để mở menu. Tìm phim bằng /find <tên phim>, hoặc chọn Find trong menu rồi nhập từ khóa ở tin nhắn tiếp theo. Chọn phim và mùa để nhận các video trong mùa đó."));
     }
 
     public boolean awaitsSearchKeyword(long userId, long chatId) {
@@ -65,6 +77,13 @@ public class UserCommandHandler {
         actions.add(new AnswerCallbackAction(update.callbackQueryId(), "", false));
         try {
             switch (callback.type()) {
+                case "u" -> {
+                    switch (callback.arguments().get(0)) {
+                        case "find" -> actions.addAll(searchCommand(update, ""));
+                        case "help" -> actions.addAll(help(update.chatId()));
+                        default -> actions.add(new SendTextAction(update.chatId(), "Lựa chọn không hợp lệ hoặc đã hết hạn."));
+                    }
+                }
                 case "m" -> showSeasons(update.chatId(), callback.longArgument(0), 0, actions);
                 case "s" -> showEpisodes(update.chatId(), callback.longArgument(0), actions);
                 case "e" -> sendEpisode(update.chatId(), callback.longArgument(0), actions);
@@ -104,7 +123,7 @@ public class UserCommandHandler {
         return List.of(new SendTextAction(chatId, text, keyboard));
     }
 
-    private List<BotAction> searchCommand(TextMessageUpdate update, String keyword) {
+    private List<BotAction> searchCommand(BotUpdate update, String keyword) {
         SearchConversation conversation = new SearchConversation(update.userId(), update.chatId());
         if (!StringUtils.hasText(keyword)) {
             pendingSearchInputs.add(conversation);

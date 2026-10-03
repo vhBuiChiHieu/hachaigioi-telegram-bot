@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 public class BotCommandMenusService implements BotCommandMenus {
 
     private static final List<Command> USER_COMMANDS = List.of(
-            new Command("start", "Bắt đầu sử dụng bot"),
+            new Command("menu", "Mở menu chức năng"),
             new Command("help", "Xem hướng dẫn"),
             new Command("find", "Tìm phim theo tên"));
 

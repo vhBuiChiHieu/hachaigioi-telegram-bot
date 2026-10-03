@@ -24,8 +24,67 @@ import com.acme.moviebot.catalog.CatalogViews.MovieSummary;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class UserCommandHandlerTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/menu", "/start", "/menu@moviebot"})
+    void menuAndStartWelcomeUsersWithCommandButtonsAndClearPendingSearch(String command) {
+        CallbackDataCodec callbacks = new CallbackDataCodec();
+        UserCommandHandler users = new UserCommandHandler(mock(CatalogQuery.class), callbacks);
+        BotUpdateRouter router = new BotUpdateRouter(
+                mock(AccessControl.class), mock(AdminCommandHandler.class), users, callbacks);
+        router.route(new TextMessageUpdate(1L, 7L, 7L, "/find"));
+
+        List<BotAction> actions = router.route(new TextMessageUpdate(2L, 7L, 7L, command));
+
+        assertThat(actions).containsExactly(new SendTextAction(7L,
+                "Xin chào! Chào mừng bạn đến với kênh phim.\n\nChọn chức năng bên dưới để bắt đầu:",
+                List.of(List.of(new InlineButton("🔎 Find", "u:find")),
+                        List.of(new InlineButton("❓ Help", "u:help")))));
+        assertThat(users.awaitsSearchKeyword(7L, 7L)).isFalse();
+    }
+
+    @Test
+    void menuFindButtonPromptsAndSearchesTheNextMessageForTheClickingUser() {
+        CatalogQuery catalog = mock(CatalogQuery.class);
+        CallbackDataCodec callbacks = new CallbackDataCodec();
+        UserCommandHandler users = new UserCommandHandler(catalog, callbacks);
+        BotUpdateRouter router = new BotUpdateRouter(
+                mock(AccessControl.class), mock(AdminCommandHandler.class), users, callbacks);
+        when(catalog.searchMovies("Bố già", 11))
+                .thenReturn(List.of(new MovieSummary(5L, "Bố già", null)));
+
+        List<BotAction> actions = router.route(new CallbackUpdate(1L, 7L, 9L, "find-query", "u:find"));
+
+        assertThat(actions).containsExactly(
+                new AnswerCallbackAction("find-query", "", false),
+                new SendTextAction(9L,
+                        "Cú pháp tìm phim: /find <tên phim>. Bạn cũng có thể gửi trực tiếp từ khóa cần tìm trong tin nhắn tiếp theo."));
+        assertThat(users.awaitsSearchKeyword(7L, 9L)).isTrue();
+        assertThat(users.awaitsSearchKeyword(8L, 9L)).isFalse();
+        assertThat(router.route(new TextMessageUpdate(2L, 7L, 9L, "Bố già")))
+                .containsExactly(new SendTextAction(9L, "Kết quả tìm kiếm:",
+                        List.of(List.of(new InlineButton("Bố già", "m:5")))));
+        assertThat(users.awaitsSearchKeyword(7L, 9L)).isFalse();
+        verify(catalog).searchMovies("Bố già", 11);
+    }
+
+    @Test
+    void menuHelpButtonUsesTheSameHelpAsTheCommand() {
+        CallbackDataCodec callbacks = new CallbackDataCodec();
+        UserCommandHandler users = new UserCommandHandler(mock(CatalogQuery.class), callbacks);
+        BotUpdateRouter router = new BotUpdateRouter(
+                mock(AccessControl.class), mock(AdminCommandHandler.class), users, callbacks);
+
+        List<BotAction> actions = router.route(new CallbackUpdate(1L, 7L, 7L, "help-query", "u:help"));
+
+        assertThat(actions.get(0)).isEqualTo(new AnswerCallbackAction("help-query", "", false));
+        assertThat(actions.subList(1, actions.size()))
+                .isEqualTo(router.route(new TextMessageUpdate(2L, 7L, 7L, "/help")));
+    }
 
     @Test
     void findWithoutKeywordUsesTheNextTextMessageAsTheSearchKeyword() {
