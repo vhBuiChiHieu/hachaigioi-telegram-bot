@@ -5,6 +5,9 @@ spring:
     name: telegram-movie-bot
   profiles:
     default: local
+  threads:
+    virtual:
+      enabled: true
   jpa:
     open-in-view: false
     properties:
