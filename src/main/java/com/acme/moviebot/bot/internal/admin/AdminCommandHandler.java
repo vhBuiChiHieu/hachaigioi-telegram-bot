@@ -50,6 +50,8 @@ public class AdminCommandHandler {
             case "list_movies" -> showMovies(update.chatId(), id);
             case "search_movie" -> conversations.startSearch(update.userId(), update.chatId());
             case "manage_movie" -> conversations.showMovieManagement(update.chatId(), requireId(id));
+            case "manage_seasons" -> conversations.expandMovieSeasons(update.chatId(), update.messageId(), requireId(id));
+            case "list_seasons" -> conversations.showMovieSeasons(update.chatId(), requireId(id));
             case "manage_season" -> conversations.showSeasonManagement(update.chatId(), requireId(id));
             case "add_season" -> conversations.startSeason(update.userId(), update.chatId(), requireId(id));
             case "add_episode" -> conversations.startEpisode(update.userId(), update.chatId(), requireId(id));

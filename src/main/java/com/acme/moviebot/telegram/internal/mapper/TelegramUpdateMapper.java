@@ -22,7 +22,8 @@ public class TelegramUpdateMapper {
             long chatId = message.path("chat").path("id").asLong(-1);
             if (userId < 1 || chatId == -1) return Optional.empty();
             return Optional.of(new CallbackUpdate(dto.updateId(), userId, chatId,
-                    callback.path("id").asText(), callback.path("data").asText("")));
+                    callback.path("id").asText(), callback.path("data").asText(""),
+                    nullableLong(message.path("message_id"))));
         }
 
         JsonNode message = payload.path("message");

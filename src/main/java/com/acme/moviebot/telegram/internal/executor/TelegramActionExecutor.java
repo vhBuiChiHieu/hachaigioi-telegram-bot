@@ -3,6 +3,7 @@ package com.acme.moviebot.telegram.internal.executor;
 import com.acme.moviebot.bot.model.AnswerCallbackAction;
 import com.acme.moviebot.bot.model.BotAction;
 import com.acme.moviebot.bot.model.EditMessageAction;
+import com.acme.moviebot.bot.model.EditMessageKeyboardAction;
 import com.acme.moviebot.bot.model.InlineButton;
 import com.acme.moviebot.bot.model.SendPhotoAction;
 import com.acme.moviebot.bot.model.SendTextAction;
@@ -48,6 +49,8 @@ public class TelegramActionExecutor {
             client.sendVideo(send.chatId(), send.fileId(), send.caption());
         } else if (action instanceof EditMessageAction edit) {
             client.editMessageText(edit.chatId(), edit.messageId(), edit.text(), keyboard(edit.keyboard()));
+        } else if (action instanceof EditMessageKeyboardAction edit) {
+            client.editMessageReplyMarkup(edit.chatId(), edit.messageId(), keyboard(edit.keyboard()));
         } else if (action instanceof AnswerCallbackAction answer) {
             client.answerCallbackQuery(answer.callbackQueryId(), answer.text(), answer.showAlert());
         } else {

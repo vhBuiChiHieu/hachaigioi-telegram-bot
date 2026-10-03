@@ -52,7 +52,7 @@ src/main/resources/
 - Movie search ignores case, diacritics, and punctuation, then ranks token matches by Levenshtein similarity. Public `/find` results include published movies; admin search excludes archived movies.
 - `bot` owns transport-neutral command routing, user/admin conversations, persistent admin sessions, update idempotency, `BotAction` creation, and user/admin command menu definitions.
 - Public movie navigation shows published seasons; selecting a season sends each published part's available video in order without a separate part selection, and reports unavailable videos together.
-- Admin catalog navigation lists movies 20 per page by descending ID; selecting a movie opens its seasons, and selecting a season opens its ordered movie parts. Keep the add action first and the selected movie/season status action last.
+- Admin catalog navigation lists movies 20 per page by descending ID. Movie details show “Quản lý mùa phim”; selecting it replaces that message's keyboard with add-season and season buttons. Selecting a season opens its ordered movie parts; returning opens the season list directly. Keep the add action first in season/part management and the selected movie/season status action last.
 - `telegram` owns Telegram HTTP calls, polling, mapping, retries, command menu registration, and action execution. Keep catalog and authorization policy out of this module.
 
 ## Build and run

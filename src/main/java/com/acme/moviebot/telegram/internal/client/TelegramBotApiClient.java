@@ -85,6 +85,15 @@ public class TelegramBotApiClient implements TelegramBotClient {
     }
 
     @Override
+    public void editMessageReplyMarkup(long chatId, long messageId, List<List<Map<String, String>>> keyboard) {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("chat_id", chatId);
+        request.put("message_id", messageId);
+        request.put("reply_markup", Map.of("inline_keyboard", keyboard == null ? List.of() : keyboard));
+        call("editMessageReplyMarkup", request);
+    }
+
+    @Override
     public void answerCallbackQuery(String callbackQueryId, String text, boolean showAlert) {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("callback_query_id", callbackQueryId);

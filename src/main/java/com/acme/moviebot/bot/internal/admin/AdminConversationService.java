@@ -3,6 +3,7 @@ package com.acme.moviebot.bot.internal.admin;
 import com.acme.moviebot.bot.internal.CallbackDataCodec;
 import com.acme.moviebot.bot.internal.MovieDetailsPresenter;
 import com.acme.moviebot.bot.model.BotAction;
+import com.acme.moviebot.bot.model.EditMessageKeyboardAction;
 import com.acme.moviebot.bot.model.IncomingMedia;
 import com.acme.moviebot.bot.model.InlineButton;
 import com.acme.moviebot.bot.model.MediaMessageUpdate;
@@ -104,19 +105,44 @@ public class AdminConversationService {
         MovieDetails movie = catalogQuery.findMovie(movieId).orElse(null);
         if (movie == null) return List.of(new SendTextAction(chatId, "Không tìm thấy phim."));
 
+        List<List<InlineButton>> keyboard = List.of(
+                List.of(new InlineButton("Quản lý mùa phim", callbacks.admin("manage_seasons", movieId))),
+                List.of(movieStatusButton(movie)));
+        return MovieDetailsPresenter.present(chatId, movie, notice, null, keyboard);
+    }
+
+    public List<BotAction> expandMovieSeasons(long chatId, Long messageId, long movieId) {
+        if (messageId == null || messageId < 1) {
+            return List.of(new SendTextAction(chatId, "Không thể cập nhật tin nhắn. Vui lòng mở lại chi tiết phim."));
+        }
+        MovieDetails movie = catalogQuery.findMovie(movieId).orElse(null);
+        if (movie == null) return List.of(new SendTextAction(chatId, "Không tìm thấy phim."));
+
+        return List.of(new EditMessageKeyboardAction(chatId, messageId,
+                movieSeasonsKeyboard(movie, catalogQuery.findSeasonsForAdmin(movieId))));
+    }
+
+    public List<BotAction> showMovieSeasons(long chatId, long movieId) {
+        MovieDetails movie = catalogQuery.findMovie(movieId).orElse(null);
+        if (movie == null) return List.of(new SendTextAction(chatId, "Không tìm thấy phim."));
+
         List<SeasonDetails> seasons = catalogQuery.findSeasonsForAdmin(movieId);
+        String seasonPrompt = seasons.isEmpty()
+                ? "Danh sách mùa:\nChưa có mùa nào."
+                : "Danh sách mùa:\nChọn mùa để quản lý.";
+        return MovieDetailsPresenter.present(chatId, movie, null, seasonPrompt, movieSeasonsKeyboard(movie, seasons));
+    }
+
+    private List<List<InlineButton>> movieSeasonsKeyboard(MovieDetails movie, List<SeasonDetails> seasons) {
         List<List<InlineButton>> keyboard = new ArrayList<>();
-        keyboard.add(List.of(new InlineButton("➕ Thêm Season", callbacks.admin("add_season", movieId))));
+        keyboard.add(List.of(new InlineButton("➕ Thêm Season", callbacks.admin("add_season", movie.id()))));
         for (SeasonDetails season : seasons) {
             String label = "Mùa " + season.seasonNumber() + " (" + season.status() + ")";
             keyboard.add(List.of(new InlineButton(label, callbacks.admin("manage_season", season.id()))));
         }
         keyboard.add(List.of(movieStatusButton(movie)));
 
-        String seasonPrompt = seasons.isEmpty()
-                ? "Danh sách mùa:\nChưa có mùa nào."
-                : "Danh sách mùa:\nChọn mùa để quản lý.";
-        return MovieDetailsPresenter.present(chatId, movie, notice, seasonPrompt, keyboard);
+        return keyboard;
     }
 
     public List<BotAction> showSeasonManagement(long chatId, long seasonId) {
@@ -131,7 +157,7 @@ public class AdminConversationService {
         List<List<InlineButton>> keyboard = new ArrayList<>();
         keyboard.add(List.of(new InlineButton("➕ Thêm phần phim", callbacks.admin("add_episode", seasonId))));
         keyboard.add(List.of(new InlineButton("⬅️ Quay lại danh sách mùa",
-                callbacks.admin("manage_movie", season.movieId()))));
+                callbacks.admin("list_seasons", season.movieId()))));
         keyboard.add(List.of(seasonStatusButton(season)));
 
         StringBuilder text = new StringBuilder();
@@ -152,7 +178,7 @@ public class AdminConversationService {
     private InlineButton movieStatusButton(MovieDetails movie) {
         return switch (movie.status()) {
             case "DRAFT" -> new InlineButton("✅ Publish phim", callbacks.admin("publish_movie", movie.id()));
-            case "PUBLISHED" -> new InlineButton("📦 Lưu trữ phim", callbacks.admin("archive_movie", movie.id()));
+            case "PUBLISHED" -> new InlineButton("🔄 Chuyển trạng thái", callbacks.admin("archive_movie", movie.id()));
             default -> new InlineButton("♻️ Khôi phục phim", callbacks.admin("publish_movie", movie.id()));
         };
     }
