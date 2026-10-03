@@ -16,6 +16,9 @@ public final class CatalogCommands {
     public record CreateSeasonCommand(long movieId, int seasonNumber, int originalEpisodeCount) {
     }
 
+    public record UpdateMovieDetailsCommand(long movieId, String chineseName, String vietnameseName, String description) {
+    }
+
     public record CreateEpisodeCommand(long seasonId) {
     }
 

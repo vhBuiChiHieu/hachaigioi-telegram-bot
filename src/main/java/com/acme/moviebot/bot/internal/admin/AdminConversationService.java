@@ -8,11 +8,13 @@ import com.acme.moviebot.bot.model.IncomingMedia;
 import com.acme.moviebot.bot.model.InlineButton;
 import com.acme.moviebot.bot.model.MediaMessageUpdate;
 import com.acme.moviebot.bot.model.SendTextAction;
+import com.acme.moviebot.bot.model.SendVideoAction;
 import com.acme.moviebot.bot.model.TextMessageUpdate;
 import com.acme.moviebot.catalog.CatalogCommands.AttachMediaCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateEpisodeCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateMovieCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateSeasonCommand;
+import com.acme.moviebot.catalog.CatalogCommands.UpdateMovieDetailsCommand;
 import com.acme.moviebot.catalog.CatalogManagement;
 import com.acme.moviebot.catalog.CatalogQuery;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeDetails;
@@ -25,6 +27,8 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +40,10 @@ public class AdminConversationService {
 
     private static final int SESSION_MINUTES = 30;
     private static final int MOVIES_PAGE_SIZE = 20;
+    private static final String MOVIE_DETAILS_SYNTAX = "Gửi đúng cú pháp: \"<tên trung>\" \"<tên việt>\" \"<mô tả>\"\n"
+            + "Ví dụ: \"教父\" \"Bố già\" \"Toàn bộ nội dung mô tả phim.\"";
+    private static final Pattern MOVIE_DETAILS_INPUT = Pattern.compile(
+            "^\"([^\"\\r\\n]+)\"\\s+\"([^\"\\r\\n]+)\"\\s+\"(.+)\"$", Pattern.DOTALL);
     private final AdminSessionRepository sessions;
     private final CatalogManagement catalog;
     private final CatalogQuery catalogQuery;
@@ -72,6 +80,24 @@ public class AdminConversationService {
         return List.of(new SendTextAction(chatId, "Nhập tên hoặc từ khóa phim cần tìm:"));
     }
 
+    public List<BotAction> startMovieDetailsUpdate(long userId, long chatId, long movieId) {
+        if (catalogQuery.findMovie(movieId).isEmpty()) {
+            return List.of(new SendTextAction(chatId, "Không tìm thấy phim."));
+        }
+        startSession(userId, chatId, AdminFlow.UPDATE_MOVIE_DETAILS, AdminSessionState.WAITING_MOVIE_DETAILS_UPDATE,
+                Map.of("movieId", movieId));
+        return List.of(new SendTextAction(chatId, MOVIE_DETAILS_SYNTAX));
+    }
+
+    public List<BotAction> startMovieThumbnailUpdate(long userId, long chatId, long movieId) {
+        if (catalogQuery.findMovie(movieId).isEmpty()) {
+            return List.of(new SendTextAction(chatId, "Không tìm thấy phim."));
+        }
+        startSession(userId, chatId, AdminFlow.UPDATE_MOVIE_THUMBNAIL, AdminSessionState.WAITING_MOVIE_THUMBNAIL_UPDATE,
+                Map.of("movieId", movieId));
+        return List.of(new SendTextAction(chatId, "Gửi ảnh bìa mới cho phim:"));
+    }
+
     public List<BotAction> showMovies(long chatId, int page) {
         MoviePage moviePage = catalogQuery.findMoviesForAdmin(page, MOVIES_PAGE_SIZE);
         if (moviePage.movies().isEmpty() && page == 0) {
@@ -106,9 +132,37 @@ public class AdminConversationService {
         if (movie == null) return List.of(new SendTextAction(chatId, "Không tìm thấy phim."));
 
         List<List<InlineButton>> keyboard = List.of(
+                List.of(new InlineButton("Quản lý chung", callbacks.admin("manage_general", movieId))),
                 List.of(new InlineButton("Quản lý mùa phim", callbacks.admin("manage_seasons", movieId))),
                 List.of(movieStatusButton(movie)));
         return MovieDetailsPresenter.present(chatId, movie, notice, null, keyboard);
+    }
+
+    public List<BotAction> expandMovieGeneral(long chatId, Long messageId, long movieId) {
+        if (messageId == null || messageId < 1) {
+            return List.of(new SendTextAction(chatId, "Không thể cập nhật tin nhắn. Vui lòng mở lại chi tiết phim."));
+        }
+        MovieDetails movie = catalogQuery.findMovie(movieId).orElse(null);
+        if (movie == null) return List.of(new SendTextAction(chatId, "Không tìm thấy phim."));
+        return List.of(new EditMessageKeyboardAction(chatId, messageId, movieGeneralKeyboard(movie)));
+    }
+
+    public List<BotAction> setMovieFull(long chatId, Long messageId, long movieId, boolean full) {
+        if (messageId == null || messageId < 1) {
+            return List.of(new SendTextAction(chatId, "Không thể cập nhật tin nhắn. Vui lòng mở lại chi tiết phim."));
+        }
+        catalog.setMovieFull(movieId, full);
+        MovieDetails movie = catalogQuery.findMovie(movieId).orElseThrow();
+        return List.of(new EditMessageKeyboardAction(chatId, messageId, movieGeneralKeyboard(movie)),
+                new SendTextAction(chatId, full ? "Đã bật FULL: phim trọn bộ." : "Đã tắt FULL: phim đang cập nhật."));
+    }
+
+    private List<List<InlineButton>> movieGeneralKeyboard(MovieDetails movie) {
+        return List.of(
+                List.of(new InlineButton("Cập nhật tên, mô tả", callbacks.admin("edit_details", movie.id()))),
+                List.of(new InlineButton("Cập nhật ảnh bìa", callbacks.admin("edit_thumbnail", movie.id()))),
+                List.of(new InlineButton(movie.full() ? "Tắt FULL" : "Bật FULL",
+                        callbacks.admin(movie.full() ? "disable_full" : "enable_full", movie.id()))));
     }
 
     public List<BotAction> expandMovieSeasons(long chatId, Long messageId, long movieId) {
@@ -120,6 +174,18 @@ public class AdminConversationService {
 
         return List.of(new EditMessageKeyboardAction(chatId, messageId,
                 movieSeasonsKeyboard(movie, catalogQuery.findSeasonsForAdmin(movieId))));
+    }
+
+    public List<BotAction> setSeasonPublished(long chatId, Long messageId, long seasonId, boolean published) {
+        if (messageId == null || messageId < 1) {
+            return List.of(new SendTextAction(chatId, "Không thể cập nhật tin nhắn. Vui lòng mở lại quản lý mùa phim."));
+        }
+        SeasonDetails season = catalogQuery.findSeasonForAdmin(seasonId).orElse(null);
+        if (season == null) return List.of(new SendTextAction(chatId, "Không tìm thấy mùa phim."));
+
+        if (published) catalog.publishSeason(seasonId);
+        else catalog.unpublishSeason(seasonId);
+        return expandMovieSeasons(chatId, messageId, season.movieId());
     }
 
     public List<BotAction> showMovieSeasons(long chatId, long movieId) {
@@ -138,7 +204,10 @@ public class AdminConversationService {
         keyboard.add(List.of(new InlineButton("➕ Thêm Season", callbacks.admin("add_season", movie.id()))));
         for (SeasonDetails season : seasons) {
             String label = "Mùa " + season.seasonNumber() + " (" + season.status() + ")";
-            keyboard.add(List.of(new InlineButton(label, callbacks.admin("manage_season", season.id()))));
+            boolean published = "PUBLISHED".equals(season.status());
+            keyboard.add(List.of(new InlineButton(label, callbacks.admin("manage_season", season.id())),
+                    new InlineButton(published ? "Lưu trữ" : "Đăng tải",
+                            callbacks.admin(published ? "unpublish_season_row" : "publish_season_row", season.id()))));
         }
         keyboard.add(List.of(movieStatusButton(movie)));
 
@@ -154,25 +223,74 @@ public class AdminConversationService {
         if (season == null) return List.of(new SendTextAction(chatId, "Không tìm thấy mùa phim."));
 
         List<EpisodeDetails> episodes = catalogQuery.findEpisodesForAdmin(seasonId);
+        MovieDetails movie = catalogQuery.findMovie(season.movieId()).orElse(null);
+        StringBuilder text = new StringBuilder();
+        appendNotice(text, notice);
+        text.append("📺 Chi tiết mùa phim")
+                .append("\n🎞 Phim: ").append(movie == null ? "#" + season.movieId() : movie.vietnameseName())
+                .append("\n🔢 Mùa: ").append(season.seasonNumber())
+                .append("\n📦 Trạng thái: ").append(statusLabel(season.status()))
+                .append("\n🇨🇳 Tổng số tập gốc: ").append(season.originalEpisodeCount())
+                .append("\n🎥 Số phần đã thêm: ").append(episodes.size())
+                .append(episodes.isEmpty() ? "\n\nChưa có phần phim nào. Bấm “Thêm phần phim” để bắt đầu."
+                        : "\n\nChọn phần phim bên dưới để xem video hoặc đổi trạng thái.");
+        return List.of(new SendTextAction(chatId, text.toString(), seasonEpisodesKeyboard(season, episodes)));
+    }
+
+    private List<List<InlineButton>> seasonEpisodesKeyboard(SeasonDetails season, List<EpisodeDetails> episodes) {
         List<List<InlineButton>> keyboard = new ArrayList<>();
-        keyboard.add(List.of(new InlineButton("➕ Thêm phần phim", callbacks.admin("add_episode", seasonId))));
+        keyboard.add(List.of(new InlineButton("➕ Thêm phần phim", callbacks.admin("add_episode", season.id()))));
+        for (EpisodeDetails episode : episodes) {
+            boolean published = "PUBLISHED".equals(episode.status());
+            keyboard.add(List.of(new InlineButton("Phần " + episode.partNumber() + " (" + episode.status() + ")",
+                            callbacks.admin("manage_episode", episode.id())),
+                    new InlineButton(published ? "Lưu trữ" : "Đăng tải",
+                            callbacks.admin(published ? "unpublish_episode_row" : "publish_episode_row", episode.id()))));
+        }
         keyboard.add(List.of(new InlineButton("⬅️ Quay lại danh sách mùa",
                 callbacks.admin("list_seasons", season.movieId()))));
         keyboard.add(List.of(seasonStatusButton(season)));
+        return keyboard;
+    }
 
-        StringBuilder text = new StringBuilder();
-        appendNotice(text, notice);
-        text.append("Season ").append(season.seasonNumber()).append(" (").append(season.status()).append(")")
-                .append("\nCác tập gốc: ").append(season.originalEpisodeCount())
-                .append("\n\nDanh sách phần phim:");
-        if (episodes.isEmpty()) {
-            text.append("\nChưa có phần phim nào.");
-        } else {
-            for (EpisodeDetails episode : episodes) {
-                text.append("\nPhần ").append(episode.partNumber()).append(" (").append(episode.status()).append(")");
-            }
+    public List<BotAction> setEpisodePublished(long chatId, Long messageId, long episodeId, boolean published) {
+        if (messageId == null || messageId < 1) {
+            return List.of(new SendTextAction(chatId, "Không thể cập nhật tin nhắn. Vui lòng mở lại chi tiết mùa phim."));
         }
-        return List.of(new SendTextAction(chatId, text.toString(), keyboard));
+        EpisodeDetails episode = catalogQuery.findEpisodeForAdmin(episodeId).orElse(null);
+        if (episode == null) return List.of(new SendTextAction(chatId, "Không tìm thấy phần phim."));
+        SeasonDetails season = catalogQuery.findSeasonForAdmin(episode.seasonId()).orElse(null);
+        if (season == null) return List.of(new SendTextAction(chatId, "Không tìm thấy mùa phim."));
+
+        if (published) catalog.publishEpisode(episodeId);
+        else catalog.unpublishEpisode(episodeId);
+        return List.of(new EditMessageKeyboardAction(chatId, messageId,
+                seasonEpisodesKeyboard(season, catalogQuery.findEpisodesForAdmin(season.id()))));
+    }
+
+    public List<BotAction> showEpisodeManagement(long chatId, long episodeId) {
+        EpisodeDetails episode = catalogQuery.findEpisodeForAdmin(episodeId).orElse(null);
+        if (episode == null) return List.of(new SendTextAction(chatId, "Không tìm thấy phần phim."));
+
+        var media = catalogQuery.findEpisodeMediaForAdmin(episodeId);
+        List<BotAction> actions = new ArrayList<>();
+        media.ifPresent(video -> actions.add(new SendVideoAction(chatId, video.providerFileId(),
+                video.movieName() + " - Mùa " + video.seasonNumber() + " - Phần " + episode.partNumber())));
+        actions.add(new SendTextAction(chatId, "🎥 Phần " + episode.partNumber()
+                + "\n📦 Trạng thái: " + statusLabel(episode.status())
+                + (media.isPresent() ? "\nVideo được gửi ở trên." : "\nChưa có video cho phần phim này."),
+                List.of(List.of(new InlineButton("⬅️ Quay lại danh sách phần phim",
+                        callbacks.admin("manage_season", episode.seasonId()))))));
+        return actions;
+    }
+
+    private String statusLabel(String status) {
+        return switch (status) {
+            case "DRAFT" -> "Bản nháp";
+            case "PUBLISHED" -> "Đã đăng tải";
+            case "ARCHIVED" -> "Đã lưu trữ";
+            default -> status;
+        };
     }
 
     private InlineButton movieStatusButton(MovieDetails movie) {
@@ -239,6 +357,8 @@ public class AdminConversationService {
                     ? createMovie(session, context, update.chatId(), null)
                     : List.of(new SendTextAction(update.chatId(), "Gửi ảnh thumbnail hoặc dấu - để bỏ qua."));
             case WAITING_MOVIE_SEARCH -> searchMovies(session, update.chatId(), text);
+            case WAITING_MOVIE_DETAILS_UPDATE -> updateMovieDetails(session, context, update.chatId(), text);
+            case WAITING_MOVIE_THUMBNAIL_UPDATE -> List.of(new SendTextAction(update.chatId(), "Hãy gửi ảnh bìa mới cho phim."));
             case WAITING_SEASON_NUMBER -> acceptSeasonNumber(session, context, update.chatId(), text);
             case WAITING_SEASON_EPISODE_COUNT -> createSeason(session, context, update.chatId(), text);
             default -> List.of(new SendTextAction(update.chatId(), "Hãy hoàn tất bước hiện tại hoặc dùng /cancel."));
@@ -258,6 +378,18 @@ public class AdminConversationService {
         IncomingMedia media = update.media();
         if (media == null || !StringUtils.hasText(media.fileId())) {
             return List.of(new SendTextAction(update.chatId(), "Không đọc được metadata ảnh/video. Hãy gửi lại."));
+        }
+        if (session.getState() == AdminSessionState.WAITING_MOVIE_THUMBNAIL_UPDATE) {
+            if (media.mimeType() == null || !media.mimeType().startsWith("image/")) {
+                return List.of(new SendTextAction(update.chatId(), "Hãy gửi ảnh bìa mới cho phim."));
+            }
+            long movieId = number(readContext(session.getContextJson()), "movieId");
+            catalog.updateMovieThumbnail(movieId, media.fileId());
+            sessions.delete(session);
+            return showMovieManagement(update.chatId(), movieId, "Đã cập nhật ảnh bìa ✅");
+        }
+        if (session.getState() == AdminSessionState.WAITING_MOVIE_DETAILS_UPDATE) {
+            return List.of(new SendTextAction(update.chatId(), MOVIE_DETAILS_SYNTAX));
         }
         if (session.getState() == AdminSessionState.WAITING_MOVIE_THUMBNAIL) {
             if (media.mimeType() == null || !media.mimeType().startsWith("image/")) {
@@ -314,6 +446,24 @@ public class AdminConversationService {
         context.put("full", Boolean.parseBoolean(value));
         touch(session, context, AdminSessionState.WAITING_MOVIE_THUMBNAIL);
         return List.of(new SendTextAction(chatId, "Gửi ảnh thumbnail hoặc dấu - để bỏ qua:"));
+    }
+
+    private List<BotAction> updateMovieDetails(AdminSession session, Map<String, Object> context, long chatId, String text) {
+        Matcher input = MOVIE_DETAILS_INPUT.matcher(text);
+        if (!input.matches() || input.group(1).isBlank() || input.group(2).isBlank() || input.group(3).isBlank()) {
+            touch(session, context);
+            return List.of(new SendTextAction(chatId, MOVIE_DETAILS_SYNTAX));
+        }
+        String chineseName = input.group(1).trim();
+        String vietnameseName = input.group(2).trim();
+        if (chineseName.length() > 255 || vietnameseName.length() > 255) {
+            touch(session, context);
+            return List.of(new SendTextAction(chatId, "Mỗi tên phim không được vượt quá 255 ký tự.\n" + MOVIE_DETAILS_SYNTAX));
+        }
+        long movieId = number(context, "movieId");
+        catalog.updateMovieDetails(new UpdateMovieDetailsCommand(movieId, chineseName, vietnameseName, input.group(3).trim()));
+        sessions.delete(session);
+        return showMovieManagement(chatId, movieId, "Đã cập nhật tên và mô tả ✅");
     }
 
     private List<BotAction> createMovie(AdminSession session, Map<String, Object> context, long chatId, String thumbnailFileId) {

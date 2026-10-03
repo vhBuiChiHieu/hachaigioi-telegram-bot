@@ -55,8 +55,10 @@ class AdminSeasonKeyboardTest {
         verify(client).answerCallbackQuery("cb", "", false);
         verify(client).editMessageReplyMarkup(7L, 99L, List.of(
                 List.of(Map.of("text", "➕ Thêm Season", "callback_data", "a:add_season:5")),
-                List.of(Map.of("text", "Mùa 1 (DRAFT)", "callback_data", "a:manage_season:9")),
-                List.of(Map.of("text", "Mùa 2 (PUBLISHED)", "callback_data", "a:manage_season:10")),
+                List.of(Map.of("text", "Mùa 1 (DRAFT)", "callback_data", "a:manage_season:9"),
+                        Map.of("text", "Đăng tải", "callback_data", "a:publish_season_row:9")),
+                List.of(Map.of("text", "Mùa 2 (PUBLISHED)", "callback_data", "a:manage_season:10"),
+                        Map.of("text", "Lưu trữ", "callback_data", "a:unpublish_season_row:10")),
                 List.of(Map.of("text", "🔄 Chuyển trạng thái", "callback_data", "a:archive_movie:5"))));
         verifyNoMoreInteractions(client);
     }

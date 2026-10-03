@@ -46,6 +46,21 @@ public class Movie extends CatalogEntity {
         this.full = full;
     }
 
+    public void updateDetails(String chineseName, String vietnameseName, String searchName, String description) {
+        this.chineseName = chineseName;
+        this.vietnameseName = vietnameseName;
+        this.searchName = searchName;
+        this.description = description;
+    }
+
+    public void updateThumbnail(String thumbnailFileId) {
+        this.thumbnailFileId = thumbnailFileId;
+    }
+
+    public void setFull(boolean full) {
+        this.full = full;
+    }
+
     public Long getId() { return id; }
     public String getVietnameseName() { return vietnameseName; }
     public String getChineseName() { return chineseName; }

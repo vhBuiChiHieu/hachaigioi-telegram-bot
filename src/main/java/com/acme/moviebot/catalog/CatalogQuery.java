@@ -27,6 +27,10 @@ public interface CatalogQuery {
 
     List<EpisodeDetails> findEpisodesForAdmin(long seasonId);
 
+    Optional<EpisodeDetails> findEpisodeForAdmin(long episodeId);
+
+    Optional<EpisodeMediaView> findEpisodeMediaForAdmin(long episodeId);
+
     List<SeasonSummary> findPublishedSeasons(long movieId);
 
     List<EpisodeSummary> findPublishedEpisodes(long seasonId);

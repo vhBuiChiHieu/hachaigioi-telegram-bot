@@ -4,6 +4,7 @@ import com.acme.moviebot.catalog.CatalogCommands.AttachMediaCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateEpisodeCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateMovieCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateSeasonCommand;
+import com.acme.moviebot.catalog.CatalogCommands.UpdateMovieDetailsCommand;
 import com.acme.moviebot.catalog.CatalogManagement;
 import com.acme.moviebot.catalog.CatalogConflictException;
 import com.acme.moviebot.catalog.CatalogNotFoundException;
@@ -49,6 +50,28 @@ public class CatalogManagementService implements CatalogManagement {
         Movie movie = new Movie(vietnameseName, chineseName, searchName, clean(command.thumbnailFileId()),
                 clean(command.description()), command.full());
         return movies.save(movie).getId();
+    }
+
+    @Override
+    public void updateMovieDetails(UpdateMovieDetailsCommand command) {
+        if (command == null) throw new IllegalArgumentException("Thiếu thông tin phim.");
+        String chineseName = requiredText(command.chineseName(), 255, "Tên Trung");
+        String vietnameseName = requiredText(command.vietnameseName(), 255, "Tên Việt");
+        if (!StringUtils.hasText(command.description())) {
+            throw new IllegalArgumentException("Mô tả không được để trống.");
+        }
+        String searchName = SearchNormalizer.normalize(vietnameseName + " " + chineseName);
+        movie(command.movieId()).updateDetails(chineseName, vietnameseName, searchName, command.description().trim());
+    }
+
+    @Override
+    public void updateMovieThumbnail(long movieId, String thumbnailFileId) {
+        movie(movieId).updateThumbnail(requiredText(thumbnailFileId, 1024, "Ảnh bìa"));
+    }
+
+    @Override
+    public void setMovieFull(long movieId, boolean full) {
+        movie(movieId).setFull(full);
     }
 
     @Override
@@ -101,6 +124,11 @@ public class CatalogManagementService implements CatalogManagement {
     }
 
     @Override
+    public void unpublishSeason(long seasonId) {
+        season(seasonId).unpublish();
+    }
+
+    @Override
     public void archiveSeason(long seasonId) {
         season(seasonId).archive();
     }
@@ -115,6 +143,15 @@ public class CatalogManagementService implements CatalogManagement {
         }
         asset.publish();
         episode.publish();
+    }
+
+    @Override
+    public void unpublishEpisode(long episodeId) {
+        Episode episode = episode(episodeId);
+        if (episode.getStatus() == CatalogStatus.PUBLISHED) {
+            episode.unpublish();
+            mediaAssets.findFirstByEpisode_IdOrderByIdAsc(episodeId).ifPresent(MediaAsset::unpublish);
+        }
     }
 
     @Override
@@ -136,5 +173,14 @@ public class CatalogManagementService implements CatalogManagement {
 
     private String clean(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private String requiredText(String value, int maxLength, String label) {
+        if (!StringUtils.hasText(value)) throw new IllegalArgumentException(label + " không được để trống.");
+        String text = value.trim();
+        if (text.length() > maxLength) {
+            throw new IllegalArgumentException(label + " không được vượt quá " + maxLength + " ký tự.");
+        }
+        return text;
     }
 }

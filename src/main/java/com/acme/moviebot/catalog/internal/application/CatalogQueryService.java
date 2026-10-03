@@ -112,6 +112,19 @@ public class CatalogQueryService implements CatalogQuery {
     }
 
     @Override
+    public Optional<EpisodeDetails> findEpisodeForAdmin(long episodeId) {
+        return episodes.findById(episodeId).map(episode -> toEpisodeDetails(episode,
+                Math.toIntExact(episodes.countBySeason_IdAndIdLessThanEqual(episode.getSeason().getId(), episode.getId()))));
+    }
+
+    @Override
+    public Optional<EpisodeMediaView> findEpisodeMediaForAdmin(long episodeId) {
+        return episodes.findById(episodeId)
+                .flatMap(episode -> mediaAssets.findFirstByEpisode_IdOrderByIdAsc(episodeId)
+                        .map(asset -> toEpisodeMediaView(episode, asset)));
+    }
+
+    @Override
     public List<SeasonSummary> findPublishedSeasons(long movieId) {
         return movies.findById(movieId)
                 .filter(movie -> movie.getStatus() == CatalogStatus.PUBLISHED)

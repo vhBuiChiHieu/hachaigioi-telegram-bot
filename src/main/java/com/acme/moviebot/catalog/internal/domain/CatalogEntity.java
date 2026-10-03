@@ -31,6 +31,10 @@ public abstract class CatalogEntity {
         status = CatalogStatus.PUBLISHED;
     }
 
+    public void unpublish() {
+        if (status == CatalogStatus.PUBLISHED) status = CatalogStatus.DRAFT;
+    }
+
     public void archive() {
         status = CatalogStatus.ARCHIVED;
     }

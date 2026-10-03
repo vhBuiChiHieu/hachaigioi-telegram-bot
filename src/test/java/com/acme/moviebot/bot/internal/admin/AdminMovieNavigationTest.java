@@ -1,6 +1,7 @@
 package com.acme.moviebot.bot.internal.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -23,7 +24,10 @@ import com.acme.moviebot.catalog.CatalogViews.MovieDetails;
 import com.acme.moviebot.catalog.CatalogViews.SeasonDetails;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class AdminMovieNavigationTest {
 
@@ -46,6 +50,7 @@ class AdminMovieNavigationTest {
         SendTextAction details = (SendTextAction) actions.getFirst();
         assertThat(details.text()).contains("Bố già", "Đã cập nhật.").doesNotContain("Danh sách mùa");
         assertThat(details.keyboard()).containsExactly(
+                List.of(new InlineButton("Quản lý chung", "a:manage_general:5")),
                 List.of(new InlineButton("Quản lý mùa phim", "a:manage_seasons:5")),
                 List.of(new InlineButton("✅ Publish phim", "a:publish_movie:5")));
         verify(query, never()).findSeasonsForAdmin(5L);
@@ -81,17 +86,68 @@ class AdminMovieNavigationTest {
         assertThat(seasonList.text()).contains("Danh sách mùa");
         assertThat(seasonList.keyboard()).containsExactly(
                 List.of(new InlineButton("➕ Thêm Season", "a:add_season:5")),
-                List.of(new InlineButton("Mùa 1 (DRAFT)", "a:manage_season:9")),
+                List.of(new InlineButton("Mùa 1 (DRAFT)", "a:manage_season:9"),
+                        new InlineButton("Đăng tải", "a:publish_season_row:9")),
                 List.of(new InlineButton("✅ Publish phim", "a:publish_movie:5")));
     }
 
-    @Test
-    void nonAdminCannotExpandSeasons() {
-        List<BotAction> actions = router.route(new CallbackUpdate(1L, 8L, 7L, "cb", "a:manage_seasons:5", 99L));
+    @ParameterizedTest
+    @ValueSource(strings = {"manage_seasons:5", "publish_season_row:9", "unpublish_season_row:9"})
+    void nonAdminCannotManageSeasonList(String action) {
+        List<BotAction> actions = router.route(new CallbackUpdate(1L, 8L, 7L, "cb", "a:" + action, 99L));
 
         assertThat(actions).containsExactly(new AnswerCallbackAction("cb", "", false),
                 new SendTextAction(7L, "Bạn không có quyền thực hiện thao tác quản trị này."));
         verifyNoInteractions(query, catalog, sessions);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void changingPublicationRefreshesTheSameKeyboardWithLatestStatuses(boolean initiallyPublished) {
+        when(access.isAdmin(7L)).thenReturn(true);
+        when(query.findMovie(5L)).thenReturn(Optional.of(movie()));
+        AtomicReference<SeasonDetails> selected = new AtomicReference<>(new SeasonDetails(
+                9L, 5L, 1, 10, initiallyPublished ? "PUBLISHED" : "DRAFT"));
+        SeasonDetails other = new SeasonDetails(10L, 5L, 2, 20, "PUBLISHED");
+        when(query.findSeasonForAdmin(9L)).thenAnswer(invocation -> Optional.of(selected.get()));
+        when(query.findSeasonsForAdmin(5L)).thenAnswer(invocation -> List.of(selected.get(), other));
+        if (initiallyPublished) {
+            doAnswer(invocation -> {
+                selected.set(new SeasonDetails(9L, 5L, 1, 10, "DRAFT"));
+                return null;
+            }).when(catalog).unpublishSeason(9L);
+        } else {
+            doAnswer(invocation -> {
+                selected.set(new SeasonDetails(9L, 5L, 1, 10, "PUBLISHED"));
+                return null;
+            }).when(catalog).publishSeason(9L);
+        }
+        List<BotAction> open = router.route(new CallbackUpdate(1L, 7L, 7L, "open", "a:manage_seasons:5", 99L));
+        InlineButton change = ((EditMessageKeyboardAction) open.getLast()).keyboard().get(1).get(1);
+
+        List<BotAction> updated = router.route(new CallbackUpdate(2L, 7L, 7L, "change", change.callbackData(), 99L));
+
+        if (initiallyPublished) verify(catalog).unpublishSeason(9L);
+        else verify(catalog).publishSeason(9L);
+        assertThat(updated).containsExactly(new AnswerCallbackAction("change", "", false),
+                new EditMessageKeyboardAction(7L, 99L, List.of(
+                        List.of(new InlineButton("➕ Thêm Season", "a:add_season:5")),
+                        List.of(new InlineButton("Mùa 1 (" + (initiallyPublished ? "DRAFT" : "PUBLISHED") + ")", "a:manage_season:9"),
+                                new InlineButton(initiallyPublished ? "Đăng tải" : "Lưu trữ",
+                                        initiallyPublished ? "a:publish_season_row:9" : "a:unpublish_season_row:9")),
+                        List.of(new InlineButton("Mùa 2 (PUBLISHED)", "a:manage_season:10"),
+                                new InlineButton("Lưu trữ", "a:unpublish_season_row:10")),
+                        List.of(new InlineButton("✅ Publish phim", "a:publish_movie:5")))));
+    }
+
+    @Test
+    void missingMessageOrSeasonCannotChangePublication() {
+        assertThat(conversations.setSeasonPublished(7L, null, 9L, true))
+                .containsExactly(new SendTextAction(7L, "Không thể cập nhật tin nhắn. Vui lòng mở lại quản lý mùa phim."));
+        when(query.findSeasonForAdmin(9L)).thenReturn(Optional.empty());
+        assertThat(conversations.setSeasonPublished(7L, 99L, 9L, false))
+                .containsExactly(new SendTextAction(7L, "Không tìm thấy mùa phim."));
+        verifyNoInteractions(catalog);
     }
 
     @Test
