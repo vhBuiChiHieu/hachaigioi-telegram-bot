@@ -2,6 +2,7 @@ package com.acme.moviebot.catalog.internal.application;
 
 import com.acme.moviebot.catalog.CatalogQuery;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaView;
+import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaType;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeDetails;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeSummary;
 import com.acme.moviebot.catalog.CatalogViews.MovieDetails;
@@ -186,6 +187,9 @@ public class CatalogQueryService implements CatalogQuery {
         Movie movie = season.getMovie();
         int partNumber = Math.toIntExact(episodes.countBySeason_IdAndIdLessThanEqual(season.getId(), episode.getId()));
         return new EpisodeMediaView(episode.getId(), movie.getVietnameseName(), season.getSeasonNumber(),
-                partNumber, asset.getProviderFileId());
+                partNumber, switch (asset.getMediaType()) {
+                    case VIDEO -> EpisodeMediaType.VIDEO;
+                    case LINK -> EpisodeMediaType.LINK;
+                }, asset.getProviderFileId(), asset.getExternalUrl());
     }
 }

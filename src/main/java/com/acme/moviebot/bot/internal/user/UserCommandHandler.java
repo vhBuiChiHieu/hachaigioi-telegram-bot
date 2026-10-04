@@ -1,6 +1,7 @@
 package com.acme.moviebot.bot.internal.user;
 
 import com.acme.moviebot.bot.internal.CallbackDataCodec;
+import com.acme.moviebot.bot.internal.EpisodeContentPresenter;
 import com.acme.moviebot.bot.internal.CallbackDataCodec.DecodedCallback;
 import com.acme.moviebot.bot.internal.MovieDetailsPresenter;
 import com.acme.moviebot.bot.model.AnswerCallbackAction;
@@ -9,10 +10,8 @@ import com.acme.moviebot.bot.model.BotUpdate;
 import com.acme.moviebot.bot.model.CallbackUpdate;
 import com.acme.moviebot.bot.model.InlineButton;
 import com.acme.moviebot.bot.model.SendTextAction;
-import com.acme.moviebot.bot.model.SendVideoAction;
 import com.acme.moviebot.bot.model.TextMessageUpdate;
 import com.acme.moviebot.catalog.CatalogQuery;
-import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaView;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeSummary;
 import com.acme.moviebot.catalog.CatalogViews.MovieDetails;
 import com.acme.moviebot.catalog.CatalogViews.MovieSummary;
@@ -183,26 +182,21 @@ public class UserCommandHandler {
         for (EpisodeSummary episode : episodes) {
             var media = catalog.findEpisodeMedia(episode.id());
             if (media.isPresent()) {
-                actions.add(videoAction(chatId, media.get()));
+                actions.add(EpisodeContentPresenter.present(chatId, media.get()));
             } else {
                 unavailableParts.add("Phần " + episode.partNumber());
             }
         }
         if (!unavailableParts.isEmpty()) {
             actions.add(new SendTextAction(chatId,
-                    "Video chưa khả dụng cho: " + String.join(", ", unavailableParts) + "."));
+                    "Nội dung chưa khả dụng cho: " + String.join(", ", unavailableParts) + "."));
         }
     }
 
     private void sendEpisode(long chatId, long episodeId, List<BotAction> actions) {
         catalog.findEpisodeMedia(episodeId).ifPresentOrElse(
-                media -> actions.add(videoAction(chatId, media)),
-                () -> actions.add(new SendTextAction(chatId, "Video của phần phim này chưa khả dụng.")));
-    }
-
-    private SendVideoAction videoAction(long chatId, EpisodeMediaView media) {
-        return new SendVideoAction(chatId, media.providerFileId(),
-                media.movieName() + " - Mùa " + media.seasonNumber() + " - Phần " + media.partNumber());
+                media -> actions.add(EpisodeContentPresenter.present(chatId, media)),
+                () -> actions.add(new SendTextAction(chatId, "Nội dung của phần phim này chưa khả dụng.")));
     }
 
     private record SearchConversation(long userId, long chatId) {

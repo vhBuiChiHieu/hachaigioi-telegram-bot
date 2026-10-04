@@ -1,6 +1,7 @@
 package com.acme.moviebot.bot.internal.admin;
 
 import com.acme.moviebot.bot.internal.CallbackDataCodec;
+import com.acme.moviebot.bot.internal.EpisodeContentPresenter;
 import com.acme.moviebot.bot.internal.MovieDetailsPresenter;
 import com.acme.moviebot.bot.model.BotAction;
 import com.acme.moviebot.bot.model.EditMessageAction;
@@ -9,9 +10,9 @@ import com.acme.moviebot.bot.model.IncomingMedia;
 import com.acme.moviebot.bot.model.InlineButton;
 import com.acme.moviebot.bot.model.MediaMessageUpdate;
 import com.acme.moviebot.bot.model.SendTextAction;
-import com.acme.moviebot.bot.model.SendVideoAction;
 import com.acme.moviebot.bot.model.TextMessageUpdate;
 import com.acme.moviebot.catalog.CatalogCommands.AttachMediaCommand;
+import com.acme.moviebot.catalog.CatalogCommands.AttachLinkCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateEpisodeCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateMovieCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateSeasonCommand;
@@ -71,9 +72,9 @@ public class AdminConversationService {
 
     public List<BotAction> startEpisode(long userId, long chatId, long seasonId) {
         long episodeId = catalog.createEpisode(new CreateEpisodeCommand(seasonId));
-        startSession(userId, chatId, AdminFlow.CREATE_EPISODE, AdminSessionState.WAITING_EPISODE_VIDEO,
+        startSession(userId, chatId, AdminFlow.CREATE_EPISODE, AdminSessionState.WAITING_EPISODE_CONTENT,
                 Map.of("seasonId", seasonId, "episodeId", episodeId));
-        return List.of(new SendTextAction(chatId, "Hãy gửi video cho phần phim mới."));
+        return List.of(new SendTextAction(chatId, "Hãy gửi video hoặc một link http:// hoặc https:// cho phần phim mới."));
     }
 
     public List<BotAction> startSearch(long userId, long chatId) {
@@ -269,7 +270,7 @@ public class AdminConversationService {
                 .append("\n🇨🇳 Tổng số tập gốc: ").append(season.originalEpisodeCount())
                 .append("\n🎥 Số phần đã thêm: ").append(episodes.size())
                 .append(episodes.isEmpty() ? "\n\nChưa có phần phim nào. Bấm “Thêm phần phim” để bắt đầu."
-                        : "\n\nChọn phần phim bên dưới để xem video hoặc đổi trạng thái.");
+                        : "\n\nChọn phần phim bên dưới để xem video/link hoặc đổi trạng thái.");
         return List.of(new SendTextAction(chatId, text.toString(), seasonEpisodesKeyboard(season, episodes)));
     }
 
@@ -310,11 +311,10 @@ public class AdminConversationService {
 
         var media = catalogQuery.findEpisodeMediaForAdmin(episodeId);
         List<BotAction> actions = new ArrayList<>();
-        media.ifPresent(video -> actions.add(new SendVideoAction(chatId, video.providerFileId(),
-                video.movieName() + " - Mùa " + video.seasonNumber() + " - Phần " + episode.partNumber())));
+        media.ifPresent(content -> actions.add(EpisodeContentPresenter.present(chatId, content)));
         actions.add(new SendTextAction(chatId, "🎥 Phần " + episode.partNumber()
                 + "\n📦 Trạng thái: " + statusLabel(episode.status())
-                + (media.isPresent() ? "\nVideo được gửi ở trên." : "\nChưa có video cho phần phim này."),
+                + (media.isPresent() ? "\nNội dung được gửi ở trên." : "\nChưa có video hoặc link cho phần phim này."),
                 List.of(List.of(new InlineButton("⬅️ Quay lại danh sách phần phim",
                         callbacks.admin("manage_season", episode.seasonId()))))));
         return actions;
@@ -398,6 +398,7 @@ public class AdminConversationService {
             case WAITING_MOVIE_THUMBNAIL_UPDATE -> List.of(new SendTextAction(update.chatId(), "Hãy gửi ảnh bìa mới cho phim."));
             case WAITING_SEASON_NUMBER -> acceptSeasonNumber(session, context, update.chatId(), text);
             case WAITING_SEASON_EPISODE_COUNT -> createSeason(session, context, update.chatId(), text);
+            case WAITING_EPISODE_CONTENT, WAITING_EPISODE_VIDEO -> acceptEpisodeLink(session, context, update.chatId(), text);
             default -> List.of(new SendTextAction(update.chatId(), "Hãy hoàn tất bước hiện tại hoặc dùng /cancel."));
         };
     }
@@ -410,7 +411,7 @@ public class AdminConversationService {
         }
         AdminSession session = savedSession;
         if (session == null) {
-            return List.of(new SendTextAction(update.chatId(), "Chưa có phần phim nào đang chờ video. Dùng /admin để bắt đầu."));
+            return List.of(new SendTextAction(update.chatId(), "Chưa có phần phim nào đang chờ video hoặc link. Dùng /admin để bắt đầu."));
         }
         IncomingMedia media = update.media();
         if (media == null || !StringUtils.hasText(media.fileId())) {
@@ -434,11 +435,12 @@ public class AdminConversationService {
             }
             return createMovie(session, readContext(session.getContextJson()), update.chatId(), media.fileId());
         }
-        if (session.getState() != AdminSessionState.WAITING_EPISODE_VIDEO) {
+        if (session.getState() != AdminSessionState.WAITING_EPISODE_CONTENT
+                && session.getState() != AdminSessionState.WAITING_EPISODE_VIDEO) {
             return List.of(new SendTextAction(update.chatId(), "Chưa có ảnh thumbnail hoặc phần phim nào đang chờ. Dùng /admin để bắt đầu."));
         }
         if (media.mimeType() != null && media.mimeType().startsWith("image/")) {
-            return List.of(new SendTextAction(update.chatId(), "Hãy gửi video cho phần phim này."));
+            return List.of(new SendTextAction(update.chatId(), "Hãy gửi video hoặc một link http:// hoặc https:// cho phần phim này."));
         }
         Map<String, Object> context = readContext(session.getContextJson());
         long episodeId = number(context, "episodeId");
@@ -447,7 +449,24 @@ public class AdminConversationService {
                 update.messageId(), media.fileName(), media.mimeType(), media.fileSize(), media.durationSeconds(),
                 media.width(), media.height()));
         sessions.delete(session);
-        return List.of(new SendTextAction(update.chatId(), "Video đã được gắn vào phần phim ✅",
+        return episodeContentAttached(update.chatId(), episodeId, seasonId, "Video");
+    }
+
+    private List<BotAction> acceptEpisodeLink(AdminSession session, Map<String, Object> context, long chatId, String text) {
+        long episodeId = number(context, "episodeId");
+        AttachLinkCommand command;
+        try {
+            command = new AttachLinkCommand(episodeId, text);
+        } catch (IllegalArgumentException exception) {
+            return List.of(new SendTextAction(chatId, exception.getMessage() + "\nBạn có thể gửi video thay cho link."));
+        }
+        catalog.attachLink(command);
+        sessions.delete(session);
+        return episodeContentAttached(chatId, episodeId, number(context, "seasonId"), "Link");
+    }
+
+    private List<BotAction> episodeContentAttached(long chatId, long episodeId, long seasonId, String contentLabel) {
+        return List.of(new SendTextAction(chatId, contentLabel + " đã được gắn vào phần phim ✅",
                 List.of(List.of(new InlineButton("✅ Publish phần phim", callbacks.admin("publish_episode", episodeId))),
                         List.of(new InlineButton("➕ Thêm phần tiếp theo", callbacks.admin("add_episode", seasonId))))));
     }

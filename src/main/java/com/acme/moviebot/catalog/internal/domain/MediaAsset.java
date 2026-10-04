@@ -32,8 +32,11 @@ public class MediaAsset extends CatalogEntity {
     @Column(name = "media_type", nullable = false, length = 32)
     private MediaType mediaType;
 
-    @Column(name = "provider_file_id", nullable = false, length = 1024)
+    @Column(name = "provider_file_id", length = 1024)
     private String providerFileId;
+
+    @Column(name = "external_url", length = 2048)
+    private String externalUrl;
 
     @Column(name = "provider_unique_file_id", length = 512)
     private String providerUniqueFileId;
@@ -81,5 +84,16 @@ public class MediaAsset extends CatalogEntity {
 
     public Long getId() { return id; }
     public Episode getEpisode() { return episode; }
+    public MediaType getMediaType() { return mediaType; }
     public String getProviderFileId() { return providerFileId; }
+    public String getExternalUrl() { return externalUrl; }
+
+    public static MediaAsset externalLink(Episode episode, String url) {
+        MediaAsset asset = new MediaAsset();
+        asset.episode = episode;
+        asset.provider = MediaProvider.EXTERNAL;
+        asset.mediaType = MediaType.LINK;
+        asset.externalUrl = new ExternalLink(url).url();
+        return asset;
+    }
 }

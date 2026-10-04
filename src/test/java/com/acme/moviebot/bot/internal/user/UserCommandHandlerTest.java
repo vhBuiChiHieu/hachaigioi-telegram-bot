@@ -19,6 +19,7 @@ import com.acme.moviebot.bot.model.SendVideoAction;
 import com.acme.moviebot.bot.model.TextMessageUpdate;
 import com.acme.moviebot.catalog.CatalogQuery;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaView;
+import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaType;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeSummary;
 import com.acme.moviebot.catalog.CatalogViews.MovieSummary;
 import java.util.List;
@@ -119,9 +120,9 @@ class UserCommandHandlerTest {
                 new EpisodeSummary(91L, 9L, 1),
                 new EpisodeSummary(92L, 9L, 2)));
         when(catalog.findEpisodeMedia(91L)).thenReturn(Optional.of(
-                new EpisodeMediaView(91L, "Bố già", 1, 1, "file-1")));
+                new EpisodeMediaView(91L, "Bố già", 1, 1, EpisodeMediaType.VIDEO, "file-1", null)));
         when(catalog.findEpisodeMedia(92L)).thenReturn(Optional.of(
-                new EpisodeMediaView(92L, "Bố già", 1, 2, "file-2")));
+                new EpisodeMediaView(92L, "Bố già", 1, 2, EpisodeMediaType.VIDEO, "file-2", null)));
 
         List<BotAction> actions = users.handleCallback(
                 new CallbackUpdate(3L, 7L, 7L, "callback-1", "s:9"),
@@ -133,5 +134,43 @@ class UserCommandHandlerTest {
                 new SendVideoAction(7L, "file-2", "Bố già - Mùa 1 - Phần 2"));
         verify(catalog).findEpisodeMedia(91L);
         verify(catalog).findEpisodeMedia(92L);
+    }
+
+    @Test
+    void selectingSeasonPreservesMixedContentOrderAndReportsUnavailablePartsTogether() {
+        CatalogQuery catalog = mock(CatalogQuery.class);
+        UserCommandHandler users = new UserCommandHandler(catalog, new CallbackDataCodec());
+        when(catalog.findPublishedEpisodes(9L)).thenReturn(List.of(
+                new EpisodeSummary(91L, 9L, 1), new EpisodeSummary(92L, 9L, 2),
+                new EpisodeSummary(93L, 9L, 3), new EpisodeSummary(94L, 9L, 4),
+                new EpisodeSummary(95L, 9L, 5)));
+        when(catalog.findEpisodeMedia(91L)).thenReturn(Optional.of(
+                new EpisodeMediaView(91L, "Bố già", 1, 1, EpisodeMediaType.VIDEO, "file-1", null)));
+        String url = "https://example.com/watch?id=2&lang=vi#player";
+        when(catalog.findEpisodeMedia(92L)).thenReturn(Optional.of(
+                new EpisodeMediaView(92L, "Bố già", 1, 2, EpisodeMediaType.LINK, null, url)));
+        when(catalog.findEpisodeMedia(93L)).thenReturn(Optional.of(
+                new EpisodeMediaView(93L, "Bố già", 1, 3, EpisodeMediaType.VIDEO, "file-3", null)));
+
+        assertThat(users.handleCallback(new CallbackUpdate(3L, 7L, 7L, "cb", "s:9"),
+                new DecodedCallback("s", List.of("9")))).containsExactly(
+                new AnswerCallbackAction("cb", "", false),
+                new SendVideoAction(7L, "file-1", "Bố già - Mùa 1 - Phần 1"),
+                new SendTextAction(7L, "Bố già - Mùa 1 - Phần 2\n" + url),
+                new SendVideoAction(7L, "file-3", "Bố già - Mùa 1 - Phần 3"),
+                new SendTextAction(7L, "Nội dung chưa khả dụng cho: Phần 4, Phần 5."));
+    }
+
+    @Test
+    void existingSinglePartCallbackAlsoReturnsExternalLink() {
+        CatalogQuery catalog = mock(CatalogQuery.class);
+        UserCommandHandler users = new UserCommandHandler(catalog, new CallbackDataCodec());
+        when(catalog.findEpisodeMedia(92L)).thenReturn(Optional.of(
+                new EpisodeMediaView(92L, "Phim", 2, 3, EpisodeMediaType.LINK, null, "https://example.com/3")));
+
+        assertThat(users.handleCallback(new CallbackUpdate(3L, 7L, 7L, "cb", "e:92"),
+                new DecodedCallback("e", List.of("92")))).containsExactly(
+                new AnswerCallbackAction("cb", "", false),
+                new SendTextAction(7L, "Phim - Mùa 2 - Phần 3\nhttps://example.com/3"));
     }
 }

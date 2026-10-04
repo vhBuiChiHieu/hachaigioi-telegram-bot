@@ -38,11 +38,18 @@ public final class CatalogViews {
     public record EpisodeDetails(long id, long seasonId, int partNumber, String status) {
     }
 
+    public enum EpisodeMediaType {
+        VIDEO,
+        LINK
+    }
+
     public record EpisodeMediaView(
             long episodeId,
             String movieName,
             int seasonNumber,
             int partNumber,
-            String providerFileId) {
+            EpisodeMediaType mediaType,
+            String providerFileId,
+            String externalUrl) {
     }
 }

@@ -1,6 +1,7 @@
 package com.acme.moviebot.catalog;
 
 import com.acme.moviebot.catalog.CatalogCommands.AttachMediaCommand;
+import com.acme.moviebot.catalog.CatalogCommands.AttachLinkCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateEpisodeCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateMovieCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateSeasonCommand;
@@ -21,6 +22,8 @@ public interface CatalogManagement {
     long createEpisode(CreateEpisodeCommand command);
 
     long attachMedia(AttachMediaCommand command);
+
+    long attachLink(AttachLinkCommand command);
 
     void publishMovie(long movieId);
 

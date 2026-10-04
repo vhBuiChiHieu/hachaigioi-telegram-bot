@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.acme.moviebot.catalog.CatalogViews.EpisodeDetails;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaView;
+import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaType;
 import com.acme.moviebot.catalog.internal.domain.CatalogStatus;
 import com.acme.moviebot.catalog.internal.domain.Episode;
 import com.acme.moviebot.catalog.internal.domain.MediaAsset;
@@ -42,7 +43,8 @@ class CatalogAdminEpisodeQueryTest {
                 mock(SeasonRepository.class), episodes, mediaAssets);
 
         assertThat(query.findEpisodeForAdmin(91L)).contains(new EpisodeDetails(91L, 9L, 3, "DRAFT"));
-        assertThat(query.findEpisodeMediaForAdmin(91L)).contains(new EpisodeMediaView(91L, "Phim", 2, 3, "draft-video"));
+        assertThat(query.findEpisodeMediaForAdmin(91L)).contains(new EpisodeMediaView(91L, "Phim", 2, 3,
+                EpisodeMediaType.VIDEO, "draft-video", null));
         assertThat(query.findEpisodeMedia(91L)).isEmpty();
     }
 }

@@ -25,6 +25,7 @@ import com.acme.moviebot.catalog.CatalogManagement;
 import com.acme.moviebot.catalog.CatalogQuery;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeDetails;
 import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaView;
+import com.acme.moviebot.catalog.CatalogViews.EpisodeMediaType;
 import com.acme.moviebot.catalog.CatalogViews.MovieDetails;
 import com.acme.moviebot.catalog.CatalogViews.SeasonDetails;
 import java.util.List;
@@ -97,10 +98,10 @@ class AdminEpisodeNavigationTest {
     }
 
     @Test
-    void missingVideoCannotPublishAPartOrProduceASuccessfulKeyboardUpdate() {
+    void missingContentCannotPublishAPartOrProduceASuccessfulKeyboardUpdate() {
         when(query.findEpisodeForAdmin(91L)).thenReturn(Optional.of(part("DRAFT")));
         when(query.findSeasonForAdmin(9L)).thenReturn(Optional.of(season()));
-        doThrow(new CatalogConflictException("Hãy gửi video trước khi publish tập này.")).when(catalog).publishEpisode(91L);
+        doThrow(new CatalogConflictException("Hãy gửi video hoặc link trước khi đăng tải phần phim này.")).when(catalog).publishEpisode(91L);
 
         assertThatThrownBy(() -> conversations.setEpisodePublished(7L, 99L, 91L, true))
                 .isInstanceOf(CatalogConflictException.class).hasMessageContaining("gửi video");
@@ -112,7 +113,7 @@ class AdminEpisodeNavigationTest {
         when(access.isAdmin(7L)).thenReturn(true);
         when(query.findEpisodeForAdmin(91L)).thenReturn(Optional.of(part("DRAFT")));
         when(query.findEpisodeMediaForAdmin(91L)).thenReturn(hasVideo
-                ? Optional.of(new EpisodeMediaView(91L, "Bố già", 2, 1, "draft-video")) : Optional.empty());
+                ? Optional.of(new EpisodeMediaView(91L, "Bố già", 2, 1, EpisodeMediaType.VIDEO, "draft-video", null)) : Optional.empty());
 
         List<BotAction> actions = router.route(new CallbackUpdate(1L, 7L, 7L, "cb", "a:manage_episode:91", 99L));
 
@@ -121,7 +122,23 @@ class AdminEpisodeNavigationTest {
         else assertThat(actions).hasSize(2);
         SendTextAction details = (SendTextAction) actions.getLast();
         assertThat(details.text()).contains("Phần 1", "Bản nháp",
-                hasVideo ? "Video được gửi ở trên" : "Chưa có video");
+                hasVideo ? "Nội dung được gửi ở trên" : "Chưa có video hoặc link");
+        assertThat(details.keyboard()).containsExactly(
+                List.of(new InlineButton("⬅️ Quay lại danh sách phần phim", "a:manage_season:9")));
+    }
+
+    @Test
+    void adminPartSelectionPreviewsDraftLinkWithBackNavigation() {
+        when(access.isAdmin(7L)).thenReturn(true);
+        when(query.findEpisodeForAdmin(91L)).thenReturn(Optional.of(part("DRAFT")));
+        when(query.findEpisodeMediaForAdmin(91L)).thenReturn(Optional.of(
+                new EpisodeMediaView(91L, "Bố già", 2, 1, EpisodeMediaType.LINK, null, "https://example.com/part1")));
+
+        List<BotAction> actions = router.route(new CallbackUpdate(1L, 7L, 7L, "cb", "a:manage_episode:91", 99L));
+
+        assertThat(actions.get(1)).isEqualTo(new SendTextAction(7L, "Bố già - Mùa 2 - Phần 1\nhttps://example.com/part1"));
+        SendTextAction details = (SendTextAction) actions.getLast();
+        assertThat(details.text()).contains("Phần 1", "Bản nháp", "Nội dung được gửi ở trên");
         assertThat(details.keyboard()).containsExactly(
                 List.of(new InlineButton("⬅️ Quay lại danh sách phần phim", "a:manage_season:9")));
     }

@@ -12,6 +12,8 @@ public enum AdminSessionState {
     WAITING_MOVIE_THUMBNAIL_UPDATE,
     WAITING_SEASON_NUMBER,
     WAITING_SEASON_EPISODE_COUNT,
+    WAITING_EPISODE_CONTENT,
+    // Retained for sessions persisted before video-or-link input was introduced.
     WAITING_EPISODE_VIDEO,
     CONFIRMING_PUBLISH
 }

@@ -1,5 +1,7 @@
 package com.acme.moviebot.catalog;
 
+import com.acme.moviebot.catalog.internal.domain.ExternalLink;
+
 public final class CatalogCommands {
 
     private CatalogCommands() {
@@ -20,6 +22,12 @@ public final class CatalogCommands {
     }
 
     public record CreateEpisodeCommand(long seasonId) {
+    }
+
+    public record AttachLinkCommand(long episodeId, String externalUrl) {
+        public AttachLinkCommand {
+            externalUrl = new ExternalLink(externalUrl).url();
+        }
     }
 
     public record AttachMediaCommand(

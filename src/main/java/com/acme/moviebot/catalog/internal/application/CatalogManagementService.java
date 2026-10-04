@@ -1,6 +1,7 @@
 package com.acme.moviebot.catalog.internal.application;
 
 import com.acme.moviebot.catalog.CatalogCommands.AttachMediaCommand;
+import com.acme.moviebot.catalog.CatalogCommands.AttachLinkCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateEpisodeCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateMovieCommand;
 import com.acme.moviebot.catalog.CatalogCommands.CreateSeasonCommand;
@@ -105,12 +106,32 @@ public class CatalogManagementService implements CatalogManagement {
         if (command == null || !StringUtils.hasText(command.providerFileId())) {
             throw new IllegalArgumentException("Không nhận được Telegram file_id hợp lệ.");
         }
-        Episode episode = episodes.findById(command.episodeId())
-                .orElseThrow(() -> new CatalogNotFoundException("Không tìm thấy tập phim."));
+        Episode episode = episodeForContentAttachment(command.episodeId());
         MediaAsset asset = new MediaAsset(episode, command.providerFileId(), command.providerUniqueFileId(),
                 command.sourceChatId(), command.sourceMessageId(), command.fileName(), command.mimeType(),
                 command.fileSize(), command.durationSeconds(), command.width(), command.height());
         return mediaAssets.save(asset).getId();
+    }
+
+    @Override
+    public long attachLink(AttachLinkCommand command) {
+        if (command == null) {
+            throw new IllegalArgumentException("Thiếu thông tin link của phần phim.");
+        }
+        Episode episode = episodeForContentAttachment(command.episodeId());
+        return mediaAssets.save(MediaAsset.externalLink(episode, command.externalUrl())).getId();
+    }
+
+    private Episode episodeForContentAttachment(long episodeId) {
+        Episode episode = episodes.findForContentAttachment(episodeId)
+                .orElseThrow(() -> new CatalogNotFoundException("Không tìm thấy phần phim."));
+        if (episode.getStatus() != CatalogStatus.DRAFT) {
+            throw new CatalogConflictException("Chỉ có thể gắn nội dung vào phần phim đang nháp.");
+        }
+        if (!mediaAssets.findForContentAttachment(episodeId).isEmpty()) {
+            throw new CatalogConflictException("Phần phim này đã có video hoặc link.");
+        }
+        return episode;
     }
 
     @Override
@@ -137,7 +158,7 @@ public class CatalogManagementService implements CatalogManagement {
     public void publishEpisode(long episodeId) {
         Episode episode = episode(episodeId);
         MediaAsset asset = mediaAssets.findFirstByEpisode_IdOrderByIdAsc(episodeId)
-                .orElseThrow(() -> new CatalogConflictException("Hãy gửi video trước khi publish tập này."));
+                .orElseThrow(() -> new CatalogConflictException("Hãy gửi video hoặc link trước khi đăng tải phần phim này."));
         if (episode.getStatus() == CatalogStatus.ARCHIVED) {
             throw new CatalogConflictException("Không thể publish một phần phim đã lưu trữ.");
         }
