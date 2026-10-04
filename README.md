@@ -7,7 +7,7 @@ Backend Telegram bot theo kiến trúc modular monolith, Java 25, Spring Boot v�
 1. Sao chép `.env.example` thành `.env` và điền `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_IDS`.
 2. Khởi động MySQL: `docker compose up -d mysql`.
 3. Chạy ứng dụng: `./mvnw spring-boot:run` (Windows: `./mvnw.cmd spring-boot:run`).
-4. Kiểm tra `http://localhost:8080/actuator/health`.
+4. Kiểm tra `http://localhost:8001/actuator/health`.
 
 Spring Boot import `.env` dưới dạng properties khi chạy từ thư mục gốc repo. Biến môi trường của hệ điều hành và command line sẽ ghi đè giá trị trong `.env`. Flyway tự chạy migrations khi Spring Boot khởi động. Ứng dụng dùng `ddl-auto: validate`; schema chỉ thay đổi qua migration.
 
